@@ -1,0 +1,133 @@
+package com.sirim.scanner.ui.screens.qrcode
+
+import androidx.camera.core.ImageProxy
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import com.sirim.scanner.data.db.QrRecord
+import com.sirim.scanner.data.ocr.QrCodeAnalyzer
+import com.sirim.scanner.data.ocr.QrDetection
+import com.sirim.scanner.data.repository.SirimRepository
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+class QrScannerViewModel private constructor(
+    private val repository: SirimRepository,
+    private val analyzer: QrCodeAnalyzer
+) : ViewModel() {
+
+    private val processing = AtomicBoolean(false)
+
+    private val _captureState = MutableStateFlow<QrCaptureState>(QrCaptureState.Searching)
+    val captureState: StateFlow<QrCaptureState> = _captureState.asStateFlow()
+
+    private val _lastDetection = MutableStateFlow<QrDetection?>(null)
+    val lastDetection: StateFlow<QrDetection?> = _lastDetection.asStateFlow()
+
+    private val _status = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val status: SharedFlow<String> = _status.asSharedFlow()
+
+    fun analyzeFrame(imageProxy: ImageProxy) {
+        if (!processing.compareAndSet(false, true)) {
+            imageProxy.close()
+            return
+        }
+        viewModelScope.launch(Dispatchers.Default) {
+            try {
+                val detection = analyzer.analyze(imageProxy)
+                withContext(Dispatchers.Main) {
+                    if (detection != null) {
+                        val previous = _lastDetection.value?.payload
+                        _lastDetection.value = detection
+                        _captureState.value = QrCaptureState.Ready("QR code detected")
+                        if (previous == null || previous != detection.payload) {
+                            _status.tryEmit("QR code detected")
+                        }
+                    } else if (_captureState.value !is QrCaptureState.Saving) {
+                        _captureState.value = QrCaptureState.Searching
+                    }
+                }
+            } catch (error: Exception) {
+                withContext(Dispatchers.Main) {
+                    _status.tryEmit("Scanning failed: ${error.message ?: "Unknown error"}")
+                }
+            } finally {
+                imageProxy.close()
+                processing.set(false)
+            }
+        }
+    }
+
+    fun clearDetection() {
+        _lastDetection.value = null
+        _captureState.value = QrCaptureState.Searching
+    }
+
+    fun saveRecord(
+        label: String?,
+        fieldSource: String?,
+        fieldNote: String?,
+        onSaved: (Long) -> Unit,
+        onDuplicate: (Long) -> Unit
+    ) {
+        val detection = _lastDetection.value ?: run {
+            _status.tryEmit("Scan a QR code first")
+            return
+        }
+        if (_captureState.value is QrCaptureState.Saving) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _captureState.value = QrCaptureState.Saving
+            val normalizedLabel = label?.takeIf { it.isNotBlank() }?.trim()
+            val normalizedSource = fieldSource?.takeIf { it.isNotBlank() }?.trim()
+            val normalizedNote = fieldNote?.takeIf { it.isNotBlank() }?.trim()
+            val existing = repository.findByQrPayload(detection.payload)
+            if (existing != null) {
+                _captureState.value = QrCaptureState.Duplicate("QR code already saved")
+                withContext(Dispatchers.Main) { onDuplicate(existing.id) }
+                _status.tryEmit("QR code already exists in database")
+                return@launch
+            }
+            val record = QrRecord(
+                payload = detection.payload,
+                label = normalizedLabel,
+                fieldSource = normalizedSource,
+                fieldNote = normalizedNote
+            )
+            val id = repository.upsertQr(record)
+            _captureState.value = QrCaptureState.Saved("QR code saved")
+            _status.tryEmit("QR record saved")
+            withContext(Dispatchers.Main) { onSaved(id) }
+        }
+    }
+
+    companion object {
+        fun Factory(
+            repository: SirimRepository,
+            analyzer: QrCodeAnalyzer
+        ): ViewModelProvider.Factory {
+            return object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    require(modelClass.isAssignableFrom(QrScannerViewModel::class.java))
+                    return QrScannerViewModel(repository, analyzer) as T
+                }
+            }
+        }
+    }
+}
+
+sealed interface QrCaptureState {
+    data object Searching : QrCaptureState
+    data class Ready(val message: String) : QrCaptureState
+    data object Saving : QrCaptureState
+    data class Saved(val message: String) : QrCaptureState
+    data class Duplicate(val message: String) : QrCaptureState
+}
