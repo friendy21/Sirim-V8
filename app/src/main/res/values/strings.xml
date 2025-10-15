@@ -42,4 +42,7 @@
     <string name="qr_controls_retake">Retake</string>
     <string name="qr_save_image_success">Scan saved to Pictures</string>
     <string name="qr_save_image_failure">Unable to save scan</string>
+    <string name="qr_reference_title">SIRIM Seal Reference</string>
+    <string name="qr_reference_body">Match the coloured SIRIM seal and capture the serial ID printed directly beneath the QR code.</string>
+    <string name="qr_reference_content_description">Reference illustration showing the SIRIM seal and serial placement</string>
 </resources>

@@ -10,6 +10,7 @@ import kotlinx.coroutines.tasks.await
 
 class QrCodeAnalyzer {
     private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    private val serialPattern = Regex("^[A-Z0-9]{6,}\$")
 
     suspend fun analyze(imageProxy: ImageProxy): QrDetection? {
         val mediaImage = imageProxy.image ?: return null
@@ -29,6 +30,34 @@ class QrCodeAnalyzer {
         if (blocks.isEmpty()) {
             val fallback = result.text.trim().ifEmpty { null }
             return fallback?.let { it to null }
+        }
+
+        val prioritizedLine = blocks
+            .flatMap { block -> block.lines }
+            .mapNotNull { line ->
+                val boundingBox = line.boundingBox ?: return@mapNotNull null
+                val rawText = line.text.trim()
+                if (rawText.isEmpty()) return@mapNotNull null
+                LineCandidate(
+                    text = rawText,
+                    boundingBox = boundingBox,
+                    bottom = boundingBox.bottom
+                )
+            }
+            .sortedByDescending { it.bottom }
+            .firstOrNull { candidate ->
+                val normalized = candidate.text.replace(" ", "").replace("-", "")
+                serialPattern.matches(normalized)
+            }
+
+        if (prioritizedLine != null) {
+            val normalized = prioritizedLine.text
+                .replace(" ", "")
+                .replace("-", "")
+                .uppercase()
+            if (normalized.isNotEmpty()) {
+                return normalized to prioritizedLine.boundingBox
+            }
         }
 
         val bestBlock = blocks
@@ -70,5 +99,11 @@ class QrCodeAnalyzer {
         return rawText?.let { it to null }
     }
 }
+
+private data class LineCandidate(
+    val text: String,
+    val boundingBox: Rect,
+    val bottom: Int
+)
 
 data class QrDetection(val payload: String, val boundingBox: Rect?)

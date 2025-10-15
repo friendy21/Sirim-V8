@@ -85,6 +85,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -269,74 +270,84 @@ fun QrScannerScreen(
                 }
             )
 
-            DetectionDetailsPanel(
+            Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 140.dp),
-                lastDetection = lastDetection,
-                label = label,
-                onLabelChange = { label = it },
-                fieldSource = fieldSource,
-                onFieldSourceChange = { fieldSource = it },
-                fieldNote = fieldNote,
-                onFieldNoteChange = { fieldNote = it },
-                captureState = captureState,
-                onSaveRecord = {
-                    viewModel.saveRecord(
-                        label = label,
-                        fieldSource = fieldSource,
-                        fieldNote = fieldNote,
-                        onSaved = { id ->
-                            label = ""
-                            fieldSource = ""
-                            fieldNote = ""
-                            onRecordSaved(id)
-                        },
-                        onDuplicate = { id ->
-                            label = ""
-                            fieldSource = ""
-                            fieldNote = ""
-                            onRecordSaved(id)
-                        }
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (scannerState !is ScannerWorkflowState.Success) {
+                    SirimReferenceCard(
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
-            )
 
-            DynamicButtonPanel(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(16.dp),
-                state = scannerState,
-                isFlashOn = isFlashOn,
-                flashEnabled = hasFlashUnit,
-                onToggleFlash = {
-                    if (hasFlashUnit) {
-                        camera?.cameraControl?.enableTorch(!isFlashOn)
+                DetectionDetailsPanel(
+                    modifier = Modifier.fillMaxWidth(),
+                    lastDetection = lastDetection,
+                    label = label,
+                    onLabelChange = { label = it },
+                    fieldSource = fieldSource,
+                    onFieldSourceChange = { fieldSource = it },
+                    fieldNote = fieldNote,
+                    onFieldNoteChange = { fieldNote = it },
+                    captureState = captureState,
+                    onSaveRecord = {
+                        viewModel.saveRecord(
+                            label = label,
+                            fieldSource = fieldSource,
+                            fieldNote = fieldNote,
+                            onSaved = { id ->
+                                label = ""
+                                fieldSource = ""
+                                fieldNote = ""
+                                onRecordSaved(id)
+                            },
+                            onDuplicate = { id ->
+                                label = ""
+                                fieldSource = ""
+                                fieldNote = ""
+                                onRecordSaved(id)
+                            }
+                        )
                     }
-                },
-                onOpenSettings = onOpenSettings,
-                onSaveFrame = {
-                    val bitmap = frozenBitmap ?: return@DynamicButtonPanel
-                    coroutineScope.launch {
-                        val saved = saveBitmapToPictures(context, bitmap)
-                        val message = if (saved != null) {
-                            context.getString(R.string.qr_save_image_success)
-                        } else {
-                            context.getString(R.string.qr_save_image_failure)
+                )
+
+                DynamicButtonPanel(
+                    modifier = Modifier.fillMaxWidth(),
+                    state = scannerState,
+                    isFlashOn = isFlashOn,
+                    flashEnabled = hasFlashUnit,
+                    onToggleFlash = {
+                        if (hasFlashUnit) {
+                            camera?.cameraControl?.enableTorch(!isFlashOn)
                         }
-                        snackbarHostState.showSnackbar(message)
+                    },
+                    onOpenSettings = onOpenSettings,
+                    onSaveFrame = {
+                        val bitmap = frozenBitmap ?: return@DynamicButtonPanel
+                        coroutineScope.launch {
+                            val saved = saveBitmapToPictures(context, bitmap)
+                            val message = if (saved != null) {
+                                context.getString(R.string.qr_save_image_success)
+                            } else {
+                                context.getString(R.string.qr_save_image_failure)
+                            }
+                            snackbarHostState.showSnackbar(message)
+                        }
+                    },
+                    onRetake = {
+                        previewController?.resumeAnalysis()
+                        frozenBitmap = null
+                        label = ""
+                        fieldSource = ""
+                        fieldNote = ""
+                        viewModel.retry()
                     }
-                },
-                onRetake = {
-                    previewController?.resumeAnalysis()
-                    frozenBitmap = null
-                    label = ""
-                    fieldSource = ""
-                    fieldNote = ""
-                    viewModel.retry()
-                }
-            )
+                )
+            }
         }
     }
 }
@@ -432,8 +443,9 @@ private fun DynamicButtonPanel(
             is ScannerWorkflowState.Success -> {
                 Row(
                     modifier = Modifier
+                        .fillMaxWidth()
                         .padding(horizontal = 20.dp, vertical = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     FilledTonalButton(onClick = onSaveFrame) {
                         Icon(
@@ -452,7 +464,61 @@ private fun DynamicButtonPanel(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(text = stringResource(id = R.string.qr_controls_retake))
                     }
+                },
+                onRetake = {
+                    previewController?.resumeAnalysis()
+                    frozenBitmap = null
+                    label = ""
+                    fieldSource = ""
+                    fieldNote = ""
+                    viewModel.retry()
                 }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SirimReferenceCard(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Image(
+                modifier = Modifier
+                    .size(96.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(16.dp)
+                    )
+                    .padding(8.dp),
+                painter = painterResource(id = R.drawable.img_sirim_reference),
+                contentDescription = stringResource(id = R.string.qr_reference_content_description)
+            )
+        }
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = stringResource(id = R.string.qr_reference_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = stringResource(id = R.string.qr_reference_body),
+                    style = MaterialTheme.typography.bodyMedium
+                )
             }
         }
     }
