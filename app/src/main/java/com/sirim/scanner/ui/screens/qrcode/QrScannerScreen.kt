@@ -45,7 +45,6 @@ import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -57,6 +56,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Slider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -107,6 +107,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -158,7 +159,7 @@ fun QrScannerScreen(
     }
 
     LaunchedEffect(viewModel) {
-        viewModel.status.collect { message ->
+        viewModel.status.collectLatest { message ->
             snackbarHostState.showSnackbar(message)
         }
     }
@@ -274,7 +275,7 @@ fun QrScannerScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 24.dp),
+                    .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 40.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -464,6 +465,33 @@ private fun DynamicButtonPanel(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(text = stringResource(id = R.string.qr_controls_retake))
                     }
+                }
+            }
+
+            is ScannerWorkflowState.Success -> {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    FilledTonalButton(onClick = onSaveFrame) {
+                        Icon(
+                            imageVector = Icons.Rounded.Save,
+                            contentDescription = stringResource(id = R.string.qr_controls_save_frame)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = stringResource(id = R.string.qr_controls_save_frame))
+                    }
+
+                    FilledTonalButton(onClick = onRetake) {
+                        Icon(
+                            imageVector = Icons.Rounded.Refresh,
+                            contentDescription = stringResource(id = R.string.qr_controls_retake)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = stringResource(id = R.string.qr_controls_retake))
+                    }
                 },
                 onRetake = {
                     previewController?.resumeAnalysis()
@@ -596,13 +624,33 @@ private fun DetectionDetailsPanel(
                 .fillMaxWidth()
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text(
-                text = stringResource(id = R.string.qr_detected_payload_label),
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(lastDetection?.payload ?: stringResource(id = R.string.qr_detection_waiting))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = stringResource(id = R.string.qr_detected_payload_label),
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = stringResource(id = R.string.qr_detected_payload_caption),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Surface(
+                tonalElevation = 2.dp,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp),
+                    text = lastDetection?.payload
+                        ?: stringResource(id = R.string.qr_detection_waiting),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
             OutlinedTextField(
                 value = label,
                 onValueChange = onLabelChange,
@@ -624,16 +672,26 @@ private fun DetectionDetailsPanel(
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2
             )
-            Button(
+
+            val actionLabel = when (captureState) {
+                is QrCaptureState.Ready -> R.string.qr_action_save
+                is QrCaptureState.Duplicate -> R.string.qr_action_open_existing
+                is QrCaptureState.Saved -> R.string.qr_action_saved
+                is QrCaptureState.Saving -> R.string.qr_action_saving
+                else -> R.string.qr_action_save
+            }
+
+            FilledTonalButton(
+                modifier = Modifier.fillMaxWidth(),
                 onClick = onSaveRecord,
                 enabled = captureState is QrCaptureState.Ready || captureState is QrCaptureState.Duplicate
             ) {
-                val actionLabel = when (captureState) {
-                    is QrCaptureState.Ready -> R.string.qr_action_save
-                    is QrCaptureState.Duplicate -> R.string.qr_action_open_existing
-                    is QrCaptureState.Saved -> R.string.qr_action_saved
-                    is QrCaptureState.Saving -> R.string.qr_action_saving
-                    else -> R.string.qr_action_save
+                Text(text = stringResource(id = actionLabel))
+            }
+
+            if (captureState is QrCaptureState.Duplicate) {
+                TextButton(onClick = onSaveRecord) {
+                    Text(text = stringResource(id = R.string.qr_action_open_existing_secondary))
                 }
                 Text(text = stringResource(id = actionLabel))
             }

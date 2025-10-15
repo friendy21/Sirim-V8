@@ -20,12 +20,14 @@
     <string name="storage_export_edit_error">No compatible app found to edit the export.</string>
     <string name="qr_scanner_title">SIRIM Scanner 2.0</string>
     <string name="qr_detected_payload_label">Detected Text</string>
+    <string name="qr_detected_payload_caption">Confirm the SIRIM serial captured beneath the QR code.</string>
     <string name="qr_detection_waiting">Waiting for text…</string>
     <string name="qr_optional_label">Optional Label</string>
     <string name="qr_field_source_label">Field Source</string>
     <string name="qr_field_note_label">Field Note</string>
     <string name="qr_action_save">Save OCR Record</string>
     <string name="qr_action_open_existing">Open Existing Record</string>
+    <string name="qr_action_open_existing_secondary">Open the saved record</string>
     <string name="qr_action_saved">Saved</string>
     <string name="qr_action_saving">Saving…</string>
     <string name="qr_permission_rationale">Camera permission is required to scan text.</string>
