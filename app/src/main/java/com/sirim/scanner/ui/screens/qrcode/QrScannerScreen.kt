@@ -464,8 +464,16 @@ private fun DynamicButtonPanel(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(text = stringResource(id = R.string.qr_controls_retake))
                     }
+                },
+                onRetake = {
+                    previewController?.resumeAnalysis()
+                    frozenBitmap = null
+                    label = ""
+                    fieldSource = ""
+                    fieldNote = ""
+                    viewModel.retry()
                 }
-            }
+            )
         }
     }
 }
@@ -497,6 +505,7 @@ private fun SirimReferenceCard(modifier: Modifier = Modifier) {
                 painter = painterResource(id = R.drawable.img_sirim_reference),
                 contentDescription = stringResource(id = R.string.qr_reference_content_description)
             )
+        }
 
             Column(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
