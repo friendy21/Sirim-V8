@@ -33,6 +33,7 @@ interface SirimRepository {
     suspend fun getQrRecord(id: Long): QrRecord?
     suspend fun getSkuRecord(id: Long): SkuRecord?
     suspend fun getAllSkuRecords(): List<SkuRecord>
+    suspend fun getAllQrRecords(): List<QrRecord>
 
     suspend fun findByQrPayload(qrPayload: String): QrRecord?
     suspend fun findByBarcode(barcode: String): SkuRecord?

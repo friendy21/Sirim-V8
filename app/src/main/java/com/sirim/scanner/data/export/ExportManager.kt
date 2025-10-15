@@ -3,6 +3,7 @@ package com.sirim.scanner.data.export
 import android.content.Context
 import android.net.Uri
 import androidx.core.content.FileProvider
+import com.sirim.scanner.data.db.QrRecord
 import com.sirim.scanner.data.db.SkuRecord
 import java.io.File
 import java.io.FileOutputStream
@@ -18,19 +19,19 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook
 
 class ExportManager(private val context: Context) {
 
-    fun exportSkuToExcel(records: List<SkuRecord>): Uri {
+    fun exportSkuToExcel(skuRecords: List<SkuRecord>, ocrRecords: List<QrRecord>): Uri {
         val file = createSkuExportFile()
         XSSFWorkbook().use { workbook ->
-            val sheet = workbook.createSheet("SKU Records")
-            sheet.setColumnWidth(0, 20 * 256)
-            sheet.setColumnWidth(1, 30 * 256)
-            sheet.setColumnWidth(2, 30 * 256)
-            sheet.setColumnWidth(3, 20 * 256)
-            sheet.setColumnWidth(4, 20 * 256)
-            sheet.setColumnWidth(5, 20 * 256)
+            val skuSheet = workbook.createSheet("SKU Records")
+            skuSheet.setColumnWidth(0, 20 * 256)
+            skuSheet.setColumnWidth(1, 30 * 256)
+            skuSheet.setColumnWidth(2, 30 * 256)
+            skuSheet.setColumnWidth(3, 20 * 256)
+            skuSheet.setColumnWidth(4, 20 * 256)
+            skuSheet.setColumnWidth(5, 20 * 256)
 
             val headerStyle = workbook.createHeaderStyle()
-            val headerRow = sheet.createRow(0)
+            val headerRow = skuSheet.createRow(0)
             listOf("Barcode", "Brand/Trademark", "Model", "Type", "Rating", "Created")
                 .forEachIndexed { index, title ->
                     val cell = headerRow.createCell(index)
@@ -39,14 +40,39 @@ class ExportManager(private val context: Context) {
                 }
 
             val bodyStyle = workbook.createBodyStyle()
-            records.forEachIndexed { index, record ->
-                val row = sheet.createRow(index + 1)
+            skuRecords.forEachIndexed { index, record ->
+                val row = skuSheet.createRow(index + 1)
                 row.createCell(0).setCellValue(record.barcode)
                 row.createCell(1).setCellValue(record.brandTrademark.orEmpty())
                 row.createCell(2).setCellValue(record.model.orEmpty())
                 row.createCell(3).setCellValue(record.type.orEmpty())
                 row.createCell(4).setCellValue(record.rating.orEmpty())
                 row.createCell(5).setCellValue(record.createdAt.toReadableDate())
+                row.forEach { cell -> cell.cellStyle = bodyStyle }
+            }
+
+            val ocrSheet = workbook.createSheet("SIRIM OCR")
+            ocrSheet.setColumnWidth(0, 60 * 256)
+            ocrSheet.setColumnWidth(1, 25 * 256)
+            ocrSheet.setColumnWidth(2, 25 * 256)
+            ocrSheet.setColumnWidth(3, 25 * 256)
+            ocrSheet.setColumnWidth(4, 20 * 256)
+
+            val ocrHeader = ocrSheet.createRow(0)
+            listOf("Captured Text", "Label", "Field Source", "Field Note", "Captured")
+                .forEachIndexed { index, title ->
+                    val cell = ocrHeader.createCell(index)
+                    cell.setCellValue(title)
+                    cell.cellStyle = headerStyle
+                }
+
+            ocrRecords.forEachIndexed { index, record ->
+                val row = ocrSheet.createRow(index + 1)
+                row.createCell(0).setCellValue(record.payload)
+                row.createCell(1).setCellValue(record.label.orEmpty())
+                row.createCell(2).setCellValue(record.fieldSource.orEmpty())
+                row.createCell(3).setCellValue(record.fieldNote.orEmpty())
+                row.createCell(4).setCellValue(record.capturedAt.toReadableDate())
                 row.forEach { cell -> cell.cellStyle = bodyStyle }
             }
 

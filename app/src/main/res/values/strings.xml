@@ -9,8 +9,8 @@
     <string name="storage_empty_title">No saved data yet</string>
     <string name="storage_empty_message">Start scanning to populate your storage hub.</string>
     <string name="storage_sku_export_title">SKU Export: %1$s</string>
-    <string name="storage_sku_export_description">%1$d captured items</string>
-    <string name="storage_action_scanner">Open Scanner</string>
+    <string name="storage_sku_export_description">Includes %1$d total SKU and OCR captures</string>
+    <string name="storage_action_scanner">Open SIRIM OCR Scanner</string>
     <string name="storage_action_view">View</string>
     <string name="storage_action_share">Share</string>
     <string name="storage_action_edit">Edit</string>

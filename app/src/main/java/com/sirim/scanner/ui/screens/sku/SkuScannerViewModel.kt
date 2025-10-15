@@ -198,15 +198,17 @@ class SkuScannerViewModel private constructor(
     private fun exportSkuWorkbook() {
         appScope.launch {
             runCatching {
-                val records = repository.getAllSkuRecords()
-                if (records.isEmpty()) return@launch
+                val skuRecords = repository.getAllSkuRecords()
+                val ocrRecords = repository.getAllQrRecords()
+                if (skuRecords.isEmpty() && ocrRecords.isEmpty()) return@launch
 
-                val uri = exportManager.exportSkuToExcel(records)
+                val uri = exportManager.exportSkuToExcel(skuRecords, ocrRecords)
                 val fileName = uri.lastPathSegment ?: "sku_records.xlsx"
+                val totalCount = skuRecords.size + ocrRecords.size
                 val exportRecord = SkuExportRecord(
                     uri = uri.toString(),
                     fileName = fileName,
-                    recordCount = records.size,
+                    recordCount = totalCount,
                     updatedAt = System.currentTimeMillis()
                 )
                 repository.recordSkuExport(exportRecord)

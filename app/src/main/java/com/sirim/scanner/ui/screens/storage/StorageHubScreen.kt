@@ -47,8 +47,7 @@ fun StorageHubScreen(
     viewModel: StorageHubViewModel,
     onRequireAuthentication: (forcePrompt: Boolean, afterAuth: () -> Unit) -> Unit,
     onBack: () -> Unit,
-    onOpenQrScanner: () -> Unit,
-    onOpenSkuScanner: () -> Unit
+    onOpenQrScanner: () -> Unit
 ) {
     val records by viewModel.storageRecords.collectAsState()
     val context = LocalContext.current
@@ -161,7 +160,7 @@ fun StorageHubScreen(
                                 ),
                                 updatedAt = record.createdAt,
                                 scannerLabel = R.string.storage_action_scanner,
-                                onScanner = onOpenSkuScanner,
+                                onScanner = onOpenQrScanner,
                                 onView = { viewExport(record) },
                                 onShare = { requireAdmin { shareExport(record) } },
                                 onEdit = { requireAdmin { editExport(record) } },
