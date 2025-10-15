@@ -47,9 +47,9 @@ class QrScannerViewModel private constructor(
                     if (detection != null) {
                         val previous = _lastDetection.value?.payload
                         _lastDetection.value = detection
-                        _captureState.value = QrCaptureState.Ready("QR code detected")
+                        _captureState.value = QrCaptureState.Ready("Text detected")
                         if (previous == null || previous != detection.payload) {
-                            _status.tryEmit("QR code detected")
+                            _status.tryEmit("Text detected")
                         }
                     } else if (_captureState.value !is QrCaptureState.Saving) {
                         _captureState.value = QrCaptureState.Searching
@@ -79,7 +79,7 @@ class QrScannerViewModel private constructor(
         onDuplicate: (Long) -> Unit
     ) {
         val detection = _lastDetection.value ?: run {
-            _status.tryEmit("Scan a QR code first")
+            _status.tryEmit("Scan text first")
             return
         }
         if (_captureState.value is QrCaptureState.Saving) return
@@ -90,9 +90,9 @@ class QrScannerViewModel private constructor(
             val normalizedNote = fieldNote?.takeIf { it.isNotBlank() }?.trim()
             val existing = repository.findByQrPayload(detection.payload)
             if (existing != null) {
-                _captureState.value = QrCaptureState.Duplicate("QR code already saved")
+                _captureState.value = QrCaptureState.Duplicate("Text already saved")
                 withContext(Dispatchers.Main) { onDuplicate(existing.id) }
-                _status.tryEmit("QR code already exists in database")
+                _status.tryEmit("Text already exists in database")
                 return@launch
             }
             val record = QrRecord(
@@ -102,8 +102,8 @@ class QrScannerViewModel private constructor(
                 fieldNote = normalizedNote
             )
             val id = repository.upsertQr(record)
-            _captureState.value = QrCaptureState.Saved("QR code saved")
-            _status.tryEmit("QR record saved")
+            _captureState.value = QrCaptureState.Saved("Text saved")
+            _status.tryEmit("OCR record saved")
             withContext(Dispatchers.Main) { onSaved(id) }
         }
     }
