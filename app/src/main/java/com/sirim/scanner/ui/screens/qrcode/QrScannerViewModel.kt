@@ -32,12 +32,22 @@ class QrScannerViewModel private constructor(
     private val _lastDetection = MutableStateFlow<QrDetection?>(null)
     val lastDetection: StateFlow<QrDetection?> = _lastDetection.asStateFlow()
 
+    private val _scannerState = MutableStateFlow<ScannerWorkflowState>(ScannerWorkflowState.Idle)
+    val scannerState: StateFlow<ScannerWorkflowState> = _scannerState.asStateFlow()
+
     private val _status = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val status: SharedFlow<String> = _status.asSharedFlow()
+
+    private var pendingConfirmationPayload: String? = null
 
     fun analyzeFrame(imageProxy: ImageProxy) {
         if (!processing.compareAndSet(false, true)) {
             imageProxy.close()
+            return
+        }
+        if (_scannerState.value is ScannerWorkflowState.Success) {
+            imageProxy.close()
+            processing.set(false)
             return
         }
         viewModelScope.launch(Dispatchers.Default) {
@@ -47,12 +57,27 @@ class QrScannerViewModel private constructor(
                     if (detection != null) {
                         val previous = _lastDetection.value?.payload
                         _lastDetection.value = detection
-                        _captureState.value = QrCaptureState.Ready("Text detected")
+                        if (_captureState.value !is QrCaptureState.Saving) {
+                            _captureState.value = QrCaptureState.Ready("Text detected")
+                        }
+                        if (pendingConfirmationPayload == detection.payload) {
+                            _scannerState.value = ScannerWorkflowState.Success(detection)
+                            pendingConfirmationPayload = null
+                        } else {
+                            pendingConfirmationPayload = detection.payload
+                            _scannerState.value = ScannerWorkflowState.Detecting(detection)
+                        }
                         if (previous == null || previous != detection.payload) {
                             _status.tryEmit("Text detected")
                         }
-                    } else if (_captureState.value !is QrCaptureState.Saving) {
-                        _captureState.value = QrCaptureState.Searching
+                    } else {
+                        pendingConfirmationPayload = null
+                        if (_captureState.value !is QrCaptureState.Saving) {
+                            _captureState.value = QrCaptureState.Searching
+                        }
+                        if (_scannerState.value !is ScannerWorkflowState.Success) {
+                            _scannerState.value = ScannerWorkflowState.Idle
+                        }
                     }
                 }
             } catch (error: Exception) {
@@ -67,8 +92,7 @@ class QrScannerViewModel private constructor(
     }
 
     fun clearDetection() {
-        _lastDetection.value = null
-        _captureState.value = QrCaptureState.Searching
+        retry()
     }
 
     fun saveRecord(
@@ -108,6 +132,13 @@ class QrScannerViewModel private constructor(
         }
     }
 
+    fun retry() {
+        pendingConfirmationPayload = null
+        _lastDetection.value = null
+        _captureState.value = QrCaptureState.Searching
+        _scannerState.value = ScannerWorkflowState.Idle
+    }
+
     companion object {
         fun Factory(
             repository: SirimRepository,
@@ -130,4 +161,10 @@ sealed interface QrCaptureState {
     data object Saving : QrCaptureState
     data class Saved(val message: String) : QrCaptureState
     data class Duplicate(val message: String) : QrCaptureState
+}
+
+sealed interface ScannerWorkflowState {
+    data object Idle : ScannerWorkflowState
+    data class Detecting(val detection: QrDetection) : ScannerWorkflowState
+    data class Success(val detection: QrDetection) : ScannerWorkflowState
 }

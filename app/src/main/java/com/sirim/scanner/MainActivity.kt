@@ -141,6 +141,7 @@ private fun NavGraph(container: AppContainer, navController: NavHostController) 
                         popUpTo(Destinations.QrScanner.route) { inclusive = true }
                     }
                 },
+                onOpenSettings = { navController.navigate(Destinations.Settings.route) },
                 repository = container.repository,
                 analyzer = container.qrAnalyzer
             )
