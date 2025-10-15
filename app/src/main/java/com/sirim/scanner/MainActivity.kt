@@ -25,13 +25,13 @@ import com.sirim.scanner.data.AppContainer
 import com.sirim.scanner.data.preferences.StartupPage
 import com.sirim.scanner.ui.common.AuthenticationDialog
 import com.sirim.scanner.ui.screens.feedback.FeedbackScreen
+import com.sirim.scanner.ui.screens.dashboard.ProductDashboardScreen
+import com.sirim.scanner.ui.screens.dashboard.ProductDashboardViewModel
 import com.sirim.scanner.ui.screens.qrcode.QrScannerScreen
 import com.sirim.scanner.ui.screens.settings.SettingsScreen
 import com.sirim.scanner.ui.screens.sku.SkuRecordFormScreen
 import com.sirim.scanner.ui.screens.sku.SkuRecordFormViewModel
 import com.sirim.scanner.ui.screens.sku.SkuScannerScreen
-import com.sirim.scanner.ui.screens.storage.StorageHubScreen
-import com.sirim.scanner.ui.screens.storage.StorageHubViewModel
 import com.sirim.scanner.ui.screens.startup.StartupScreen
 import com.sirim.scanner.ui.theme.SirimScannerTheme
 import com.sirim.scanner.ui.viewmodel.PreferencesViewModel
@@ -133,7 +133,16 @@ private fun NavGraph(container: AppContainer, navController: NavHostController) 
                 onOpenSettings = { navController.navigate(Destinations.Settings.route) }
             )
         }
-        composable(Destinations.QrScanner.route) {
+        composable(
+            route = Destinations.QrScanner.route + "?productId={productId}",
+            arguments = listOf(
+                navArgument("productId") {
+                    type = NavType.LongType
+                    defaultValue = -1L
+                }
+            )
+        ) { backStackEntry ->
+            val productId = backStackEntry.arguments?.getLong("productId")?.takeIf { it > 0 }
             QrScannerScreen(
                 onBack = { navController.popBackStack() },
                 onRecordSaved = { _ ->
@@ -141,8 +150,12 @@ private fun NavGraph(container: AppContainer, navController: NavHostController) 
                         popUpTo(Destinations.QrScanner.route) { inclusive = true }
                     }
                 },
+                onOpenSettings = { navController.navigate(Destinations.Settings.route) },
                 repository = container.repository,
-                analyzer = container.qrAnalyzer
+                analyzer = container.qrAnalyzer,
+                preferences = preferences,
+                productId = productId,
+                onProductScanUpdated = { navController.popBackStack() }
             )
         }
         composable(Destinations.SkuScanner.route) {
@@ -186,32 +199,33 @@ private fun NavGraph(container: AppContainer, navController: NavHostController) 
             )
         }
         composable(Destinations.Storage.route) {
-            val viewModel: StorageHubViewModel = viewModel(
-                factory = StorageHubViewModel.Factory(container.repository)
+            val viewModel: ProductDashboardViewModel = viewModel(
+                factory = ProductDashboardViewModel.Factory(container.repository)
             )
-            StorageHubScreen(
+            ProductDashboardScreen(
                 viewModel = viewModel,
-                onRequireAuthentication = { forcePrompt, action ->
-                    requestAuthentication(action, forcePrompt)
+                onOpenScanner = { scan ->
+                    navController.navigate("${Destinations.QrScanner.route}?productId=${scan.id}")
                 },
-                onBack = { navController.popBackStack() },
-                onOpenQrScanner = {
-                    navController.navigate(Destinations.QrScanner.route)
-                }
+                onBack = { navController.popBackStack() }
             )
         }
         composable(Destinations.Settings.route) {
             SettingsScreen(
                 preferences = preferences,
                 authError = authError,
-                onStartupSelected = preferencesViewModel::setStartupPage,
                 onAuthenticate = { username, password ->
                     preferencesViewModel.authenticate(username, password)
                 },
                 onLogout = preferencesViewModel::logout,
                 onDismissAuthError = preferencesViewModel::clearAuthError,
                 onBack = { navController.popBackStack() },
-                onOpenFeedback = { navController.navigate(Destinations.Feedback.route) }
+                onOpenFeedback = { navController.navigate(Destinations.Feedback.route) },
+                onVibrationChanged = preferencesViewModel::setVibrationOnScan,
+                onSoundChanged = preferencesViewModel::setSoundOnScan,
+                onAutoSaveChanged = preferencesViewModel::setAutoSaveImage,
+                onImageQualityChanged = preferencesViewModel::setImageQuality,
+                onDefaultActionChanged = preferencesViewModel::setDefaultScanAction
             )
         }
         composable(Destinations.Feedback.route) {

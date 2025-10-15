@@ -3,6 +3,8 @@ package com.sirim.scanner.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.sirim.scanner.data.preferences.DefaultScanAction
+import com.sirim.scanner.data.preferences.ImageQuality
 import com.sirim.scanner.data.preferences.PreferencesManager
 import com.sirim.scanner.data.preferences.StartupPage
 import com.sirim.scanner.data.preferences.UserPreferences
@@ -68,6 +70,26 @@ class PreferencesViewModel private constructor(
             manager.clearAuthentication()
             _authError.value = null
         }
+    }
+
+    fun setVibrationOnScan(enabled: Boolean) {
+        viewModelScope.launch { manager.setVibrationOnScan(enabled) }
+    }
+
+    fun setSoundOnScan(enabled: Boolean) {
+        viewModelScope.launch { manager.setSoundOnScan(enabled) }
+    }
+
+    fun setAutoSaveImage(enabled: Boolean) {
+        viewModelScope.launch { manager.setAutoSaveImage(enabled) }
+    }
+
+    fun setImageQuality(quality: ImageQuality) {
+        viewModelScope.launch { manager.setImageQuality(quality) }
+    }
+
+    fun setDefaultScanAction(action: DefaultScanAction) {
+        viewModelScope.launch { manager.setDefaultScanAction(action) }
     }
 
     fun checkSessionExpiry() {

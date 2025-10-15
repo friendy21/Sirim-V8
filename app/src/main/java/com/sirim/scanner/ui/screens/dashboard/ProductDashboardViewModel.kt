@@ -1,36 +1,39 @@
-package com.sirim.scanner.ui.screens.storage
+package com.sirim.scanner.ui.screens.dashboard
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.sirim.scanner.data.db.SkuExportRecord
-import com.sirim.scanner.data.db.StorageRecord
+import com.sirim.scanner.data.db.ProductScan
 import com.sirim.scanner.data.repository.SirimRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class StorageHubViewModel private constructor(
+class ProductDashboardViewModel private constructor(
     private val repository: SirimRepository
 ) : ViewModel() {
 
-    val storageRecords: StateFlow<List<StorageRecord>> = repository.storageRecords
+    val productScans: StateFlow<List<ProductScan>> = repository.productScans
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    fun clearQrDatabase() {
-        viewModelScope.launch { repository.clearQr() }
+    fun deleteScan(scan: ProductScan) {
+        viewModelScope.launch { repository.deleteProductScan(scan) }
     }
 
-    fun deleteSkuExport(record: SkuExportRecord) {
-        viewModelScope.launch { repository.deleteSkuExport(record) }
+    fun updateScan(scan: ProductScan) {
+        viewModelScope.launch { repository.updateProductScan(scan) }
+    }
+
+    fun updateSirimData(id: Long, data: String?) {
+        viewModelScope.launch { repository.updateProductScanSirimData(id, data) }
     }
 
     companion object {
         fun Factory(repository: SirimRepository): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    return StorageHubViewModel(repository) as T
+                    return ProductDashboardViewModel(repository) as T
                 }
             }
     }

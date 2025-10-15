@@ -11,7 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.ViewList
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -64,9 +64,9 @@ fun StartupScreen(
                 onClick = onOpenSkuScanner
             )
             StartupOptionCard(
-                title = "Storage",
-                description = "Review, filter, and manage your stored scans.",
-                icon = { Icon(Icons.Outlined.Storage, contentDescription = null) },
+                title = "Product dashboard",
+                description = "Review captured SKU and SIRIM records in one place.",
+                icon = { Icon(Icons.Outlined.ViewList, contentDescription = null) },
                 onClick = onOpenStorage
             )
             StartupOptionCard(

@@ -6,14 +6,15 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [QrRecord::class, SkuRecord::class, SkuExportRecord::class],
-    version = 11,
+    entities = [QrRecord::class, SkuRecord::class, SkuExportRecord::class, ProductScan::class],
+    version = 12,
     exportSchema = true
 )
 abstract class SirimDatabase : RoomDatabase() {
     abstract fun qrRecordDao(): QrRecordDao
     abstract fun skuRecordDao(): SkuRecordDao
     abstract fun skuExportDao(): SkuExportDao
+    abstract fun productScanDao(): ProductScanDao
 
     companion object {
         val MIGRATION_1_2: Migration = object : Migration(1, 2) {
@@ -127,6 +128,28 @@ abstract class SirimDatabase : RoomDatabase() {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE qr_records ADD COLUMN field_source TEXT")
                 database.execSQL("ALTER TABLE qr_records ADD COLUMN field_note TEXT")
+            }
+        }
+
+        val MIGRATION_11_12: Migration = object : Migration(11, 12) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS product_scans (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "sku_report TEXT NOT NULL, " +
+                        "sku_name TEXT NOT NULL, " +
+                        "sirim_data TEXT, " +
+                        "timestamp INTEGER NOT NULL, " +
+                        "product_image_path TEXT, " +
+                        "total_captured INTEGER NOT NULL" +
+                        ")"
+                )
+                database.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS index_product_scans_sku_report ON product_scans(sku_report)"
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_product_scans_timestamp ON product_scans(timestamp)"
+                )
             }
         }
     }

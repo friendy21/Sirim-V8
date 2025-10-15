@@ -3,18 +3,18 @@ package com.sirim.scanner.data.repository
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
+import com.sirim.scanner.data.db.ProductScan
+import com.sirim.scanner.data.db.ProductScanDao
 import com.sirim.scanner.data.db.QrRecord
 import com.sirim.scanner.data.db.QrRecordDao
 import com.sirim.scanner.data.db.SkuRecord
 import com.sirim.scanner.data.db.SkuRecordDao
 import com.sirim.scanner.data.db.SkuExportDao
 import com.sirim.scanner.data.db.SkuExportRecord
-import com.sirim.scanner.data.db.StorageRecord
 import com.sirim.scanner.data.db.toGalleryList
 import java.io.File
 import java.io.FileOutputStream
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +24,7 @@ class SirimRepositoryImpl(
     private val qrDao: QrRecordDao,
     private val skuDao: SkuRecordDao,
     private val skuExportDao: SkuExportDao,
+    private val productScanDao: ProductScanDao,
     private val context: Context
 ) : SirimRepository {
 
@@ -33,28 +34,53 @@ class SirimRepositoryImpl(
 
     override val skuRecords: Flow<List<SkuRecord>> = skuDao.getAllRecords()
 
-    override val skuExports: Flow<List<SkuExportRecord>> = skuExportDao.observeExports()
+    override val productScans: Flow<List<ProductScan>> = productScanDao.observeProductScans()
 
-    override val storageRecords: Flow<List<StorageRecord>> = combine(qrRecords, skuExports) { qr, exports ->
-        val storageItems = mutableListOf<StorageRecord>()
-        val lastUpdated = qr.maxOfOrNull { it.capturedAt } ?: 0L
-        storageItems += StorageRecord.SirimScannerV2(
-            totalRecords = qr.size,
-            lastUpdated = lastUpdated
-        )
-        storageItems += exports.map { StorageRecord.SkuExport(it) }
-        storageItems.sortedByDescending { it.createdAt }
-    }
+    override val skuExports: Flow<List<SkuExportRecord>> = skuExportDao.observeExports()
 
     override fun searchQr(query: String): Flow<List<QrRecord>> = qrDao.searchRecords("%$query%")
 
     override fun searchSku(query: String): Flow<List<SkuRecord>> = skuDao.searchRecords("%$query%")
 
-    override fun searchAll(query: String): Flow<List<StorageRecord>> = storageRecords
-
     override suspend fun upsertQr(record: QrRecord): Long = qrDao.upsert(record)
 
     override suspend fun upsertSku(record: SkuRecord): Long = skuDao.upsert(record)
+
+    override suspend fun recordProductScan(
+        skuReport: String,
+        skuName: String,
+        sirimData: String?,
+        imagePath: String?
+    ): Long {
+        val existing = productScanDao.findBySkuReport(skuReport)
+        val now = System.currentTimeMillis()
+        return if (existing == null) {
+            productScanDao.upsert(
+                ProductScan(
+                    skuReport = skuReport,
+                    skuName = skuName,
+                    sirimData = sirimData,
+                    productImagePath = imagePath,
+                    timestamp = now,
+                    totalCaptured = 1
+                )
+            )
+        } else {
+            val updated = existing.copy(
+                skuName = skuName,
+                sirimData = sirimData ?: existing.sirimData,
+                productImagePath = imagePath ?: existing.productImagePath,
+                timestamp = now,
+                totalCaptured = existing.totalCaptured + 1
+            )
+            productScanDao.upsert(updated)
+        }
+    }
+
+    override suspend fun updateProductScan(scan: ProductScan): Long {
+        val updated = scan.copy(timestamp = System.currentTimeMillis())
+        return productScanDao.upsert(updated)
+    }
 
     override suspend fun deleteQr(record: QrRecord) {
         qrDao.delete(record)
@@ -70,6 +96,13 @@ class SirimRepositoryImpl(
         skuDao.delete(record)
     }
 
+    override suspend fun deleteProductScan(scan: ProductScan) {
+        scan.productImagePath?.let { path ->
+            runCatching { File(path).takeIf(File::exists)?.delete() }
+        }
+        productScanDao.delete(scan)
+    }
+
     override suspend fun clearQr() = withContext(Dispatchers.IO) {
         qrDao.clearAll()
     }
@@ -83,6 +116,8 @@ class SirimRepositoryImpl(
 
     override suspend fun getSkuRecord(id: Long): SkuRecord? = skuDao.getRecordById(id)
 
+    override suspend fun getProductScan(id: Long): ProductScan? = productScanDao.getById(id)
+
     override suspend fun getAllSkuRecords(): List<SkuRecord> = skuDao.getAllRecordsOnce()
 
     override suspend fun getAllQrRecords(): List<QrRecord> = qrDao.getAllRecordsOnce()
@@ -90,6 +125,12 @@ class SirimRepositoryImpl(
     override suspend fun findByQrPayload(qrPayload: String): QrRecord? = qrDao.findByPayload(qrPayload)
 
     override suspend fun findByBarcode(barcode: String): SkuRecord? = skuDao.findByBarcode(barcode)
+
+    override suspend fun findProductScanBySku(sku: String): ProductScan? = productScanDao.findBySkuReport(sku)
+
+    override suspend fun updateProductScanSirimData(id: Long, data: String?) {
+        productScanDao.updateSirimData(id, data, System.currentTimeMillis())
+    }
 
     override suspend fun persistImage(bytes: ByteArray, extension: String): String {
         val directory = File(context.filesDir, "captured")

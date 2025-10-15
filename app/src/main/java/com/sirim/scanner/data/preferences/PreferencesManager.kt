@@ -35,6 +35,36 @@ class PreferencesManager(private val context: Context) : SkuSessionTracker {
         }
     }
 
+    suspend fun setVibrationOnScan(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.VIBRATION_ON_SCAN] = enabled
+        }
+    }
+
+    suspend fun setSoundOnScan(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.SOUND_ON_SCAN] = enabled
+        }
+    }
+
+    suspend fun setAutoSaveImage(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.AUTO_SAVE_IMAGE] = enabled
+        }
+    }
+
+    suspend fun setImageQuality(quality: ImageQuality) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.IMAGE_QUALITY] = quality.storageKey
+        }
+    }
+
+    suspend fun setDefaultScanAction(action: DefaultScanAction) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.DEFAULT_SCAN_ACTION] = action.storageKey
+        }
+    }
+
     suspend fun setAuthentication() {
         context.dataStore.edit { prefs ->
             prefs[Keys.IS_AUTHENTICATED] = true
@@ -80,11 +110,21 @@ class PreferencesManager(private val context: Context) : SkuSessionTracker {
         val timestamp = this[Keys.AUTH_TIMESTAMP] ?: 0L
         val expiryDuration = this[Keys.AUTH_EXPIRY_DURATION]?.takeIf { it <= 0L }
             ?: DEFAULT_AUTH_EXPIRY_MILLIS
+        val vibration = this[Keys.VIBRATION_ON_SCAN] ?: true
+        val sound = this[Keys.SOUND_ON_SCAN] ?: true
+        val autoSave = this[Keys.AUTO_SAVE_IMAGE] ?: false
+        val quality = ImageQuality.fromKey(this[Keys.IMAGE_QUALITY])
+        val defaultAction = DefaultScanAction.fromKey(this[Keys.DEFAULT_SCAN_ACTION])
         return UserPreferences(
             startupPage = startupPage,
             isAuthenticated = authenticated,
             authTimestamp = timestamp,
-            authExpiryDurationMillis = expiryDuration
+            authExpiryDurationMillis = expiryDuration,
+            vibrationOnScan = vibration,
+            soundOnScan = sound,
+            autoSaveImage = autoSave,
+            imageQuality = quality,
+            defaultScanAction = defaultAction
         )
     }
 
@@ -94,6 +134,11 @@ class PreferencesManager(private val context: Context) : SkuSessionTracker {
         val AUTH_TIMESTAMP = longPreferencesKey("auth_timestamp")
         val AUTH_EXPIRY_DURATION = longPreferencesKey("auth_expiry_duration")
         val CURRENT_SKU_ID = longPreferencesKey("current_sku_id")
+        val VIBRATION_ON_SCAN = booleanPreferencesKey("vibration_on_scan")
+        val SOUND_ON_SCAN = booleanPreferencesKey("sound_on_scan")
+        val AUTO_SAVE_IMAGE = booleanPreferencesKey("auto_save_image")
+        val IMAGE_QUALITY = stringPreferencesKey("image_quality")
+        val DEFAULT_SCAN_ACTION = stringPreferencesKey("default_scan_action")
     }
 
     companion object {
