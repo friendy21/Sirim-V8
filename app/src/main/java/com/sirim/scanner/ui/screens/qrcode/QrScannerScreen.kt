@@ -612,6 +612,7 @@ private fun BrightnessControl(
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
+                Text(text = stringResource(id = actionLabel))
             }
         }
     }
