@@ -44,6 +44,21 @@ This document summarizes all compilation errors fixed and optimizations applied 
 **Impact**: This fix resolved:
 - ✅ Unresolved reference 'SirimReferenceCard' (caused by broken function structure)
 
+### 3. QrScannerScreen.kt - Unresolved reference 'actionLabel' in BrightnessControl
+**Location**: Line 615 (after initial fixes)
+**Issue**: Misplaced `Text(text = stringResource(id = actionLabel))` in BrightnessControl function
+**Root Cause**: 
+- A Text component referencing `actionLabel` was incorrectly placed in the BrightnessControl function
+- `actionLabel` is only defined in the DetectionDetailsPanel function (line 694)
+- This was likely a copy-paste error
+
+**Fix Applied**:
+- Removed the erroneous line `Text(text = stringResource(id = actionLabel))` from BrightnessControl
+- Verified that actionLabel is properly used only in DetectionDetailsPanel
+
+**Impact**: This fix resolved:
+- ✅ Unresolved reference 'actionLabel'
+
 ## Build Configuration Optimizations
 
 ### 1. app/build.gradle.kts - ABI Splits Optimization
@@ -66,7 +81,7 @@ This document summarizes all compilation errors fixed and optimizations applied 
 
 ## Code Quality Improvements
 
-### All "Unresolved Reference" Errors Were False Positives
+### All "Unresolved Reference" Errors Were False Positives (Except actionLabel)
 The following errors were reported but were actually caused by the syntax errors above:
 - `previewController` - properly declared at line 141
 - `frozenBitmap` - properly declared at line 142
@@ -76,14 +91,17 @@ The following errors were reported but were actually caused by the syntax errors
 - `viewModel.retry()` - exists in QrScannerViewModel at line 135
 - `SirimReferenceCard` - properly defined as private composable at line 474
 
-Once the syntax errors were fixed, these references resolved correctly.
+The `actionLabel` error was a genuine issue - a misplaced Text component that has now been removed.
+
+Once all syntax errors were fixed, these references resolved correctly.
 
 ## Files Modified
 
 1. **app/src/main/java/com/sirim/scanner/ui/screens/qrcode/QrScannerScreen.kt**
    - Fixed duplicate when branch
    - Fixed SirimReferenceCard structure
-   - Reduced from 906 to 869 lines
+   - Removed erroneous actionLabel reference in BrightnessControl
+   - Reduced from 906 to 868 lines
 
 2. **app/build.gradle.kts**
    - Optimized ABI splits
@@ -96,9 +114,16 @@ All compilation errors have been resolved. The project should now build successf
 ./gradlew clean build
 ```
 
+## Git Commits
+
+1. **061b351** - "Fix compilation errors and optimize build configuration"
+2. **adc8365** - "Fix: Remove erroneous actionLabel reference in BrightnessControl"
+
 ## Next Steps
 
 1. Run `./gradlew clean build` to verify compilation
 2. Test the QR scanner functionality
 3. Verify the reference card displays correctly
-4. Consider adding unit tests for the fixed components
+4. Test the brightness control functionality
+5. Consider adding unit tests for the fixed components
+
