@@ -6,6 +6,8 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import kotlin.math.max
+import kotlin.math.min
 import kotlinx.coroutines.tasks.await
 
 class QrCodeAnalyzer {
@@ -21,7 +23,15 @@ class QrCodeAnalyzer {
         val detection = selectPayload(result)
         val payload = detection?.first?.takeIf { it.isNotBlank() }
         return payload?.let { text ->
-            QrDetection(payload = text, boundingBox = detection.second)
+            val boundingBox = detection.second
+            val normalized = boundingBox?.let { box ->
+                createNormalizedBoundingBox(box, imageProxy)
+            }
+            QrDetection(
+                payload = text,
+                boundingBox = boundingBox,
+                normalizedBoundingBox = normalized
+            )
         }
     }
 
@@ -106,4 +116,43 @@ private data class LineCandidate(
     val bottom: Int
 )
 
-data class QrDetection(val payload: String, val boundingBox: Rect?)
+data class QrDetection(
+    val payload: String,
+    val boundingBox: Rect?,
+    val normalizedBoundingBox: NormalizedBoundingBox?
+)
+
+data class NormalizedBoundingBox(
+    val left: Float,
+    val top: Float,
+    val right: Float,
+    val bottom: Float
+)
+
+private fun createNormalizedBoundingBox(
+    rect: Rect,
+    imageProxy: ImageProxy
+): NormalizedBoundingBox {
+    val rotation = ((imageProxy.imageInfo.rotationDegrees % 360) + 360) % 360
+    val width: Float
+    val height: Float
+    if (rotation == 90 || rotation == 270) {
+        width = imageProxy.height.toFloat()
+        height = imageProxy.width.toFloat()
+    } else {
+        width = imageProxy.width.toFloat()
+        height = imageProxy.height.toFloat()
+    }
+    val safeWidth = max(width, 1f)
+    val safeHeight = max(height, 1f)
+    val left = (rect.left / safeWidth).coerceIn(0f, 1f)
+    val top = (rect.top / safeHeight).coerceIn(0f, 1f)
+    val right = (rect.right / safeWidth).coerceIn(0f, 1f)
+    val bottom = (rect.bottom / safeHeight).coerceIn(0f, 1f)
+    return NormalizedBoundingBox(
+        left = min(left, right),
+        top = min(top, bottom),
+        right = max(left, right),
+        bottom = max(top, bottom)
+    )
+}

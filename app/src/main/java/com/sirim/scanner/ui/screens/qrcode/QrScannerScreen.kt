@@ -18,6 +18,7 @@ import androidx.camera.core.Preview
 import androidx.camera.core.TorchState
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -105,6 +106,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
@@ -137,6 +139,7 @@ fun QrScannerScreen(
     var fieldNote by rememberSaveable { mutableStateOf("") }
 
     var brightnessSlider by rememberSaveable { mutableFloatStateOf(0f) }
+    var isBrightnessExpanded by rememberSaveable { mutableStateOf(false) }
     var camera by remember { mutableStateOf<Camera?>(null) }
     var previewController by remember { mutableStateOf<PreviewController?>(null) }
     var frozenBitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -156,6 +159,18 @@ fun QrScannerScreen(
     LaunchedEffect(camera) {
         brightnessSlider =
             camera?.cameraInfo?.exposureState?.exposureCompensationIndex?.toFloat() ?: 0f
+    }
+
+    LaunchedEffect(isExposureSupported) {
+        if (!isExposureSupported) {
+            isBrightnessExpanded = false
+        }
+    }
+
+    LaunchedEffect(scannerState) {
+        if (scannerState is ScannerWorkflowState.Success) {
+            isBrightnessExpanded = false
+        }
     }
 
     LaunchedEffect(viewModel) {
@@ -240,9 +255,15 @@ fun QrScannerScreen(
                 }
             }
 
+            val overlayDetection = when (val state = scannerState) {
+                is ScannerWorkflowState.Detecting -> state.detection
+                is ScannerWorkflowState.Success -> state.detection
+                else -> null
+            }
             ViewfinderOverlay(
                 modifier = Modifier.fillMaxSize(),
-                state = scannerState
+                state = scannerState,
+                detection = overlayDetection
             )
 
             CameraTopBar(
@@ -260,6 +281,12 @@ fun QrScannerScreen(
                 value = brightnessSlider,
                 range = brightnessRange,
                 enabled = isExposureSupported,
+                expanded = isBrightnessExpanded,
+                onToggle = {
+                    if (isExposureSupported) {
+                        isBrightnessExpanded = !isBrightnessExpanded
+                    }
+                },
                 onValueChange = { value ->
                     if (brightnessRange == null) return@BrightnessControl
                     val clamped = value.coerceIn(
@@ -279,7 +306,7 @@ fun QrScannerScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                if (scannerState !is ScannerWorkflowState.Success) {
+                if (scannerState is ScannerWorkflowState.Idle && lastDetection == null) {
                     SirimReferenceCard(
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -345,6 +372,7 @@ fun QrScannerScreen(
                         label = ""
                         fieldSource = ""
                         fieldNote = ""
+                        isBrightnessExpanded = false
                         viewModel.retry()
                     }
                 )
@@ -522,44 +550,71 @@ private fun BrightnessControl(
     value: Float,
     range: ClosedFloatingPointRange<Float>?,
     enabled: Boolean,
+    expanded: Boolean,
+    onToggle: () -> Unit,
     onValueChange: (Float) -> Unit
 ) {
     if (range == null) return
     val clampedValue = value.coerceIn(range.start, range.endInclusive)
+    val containerAlpha = if (expanded) 0.95f else 0.8f
 
-    Column(
-        modifier = modifier
-            .background(
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-                shape = RoundedCornerShape(24.dp)
-            )
-            .padding(horizontal = 12.dp, vertical = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(28.dp),
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = containerAlpha)
     ) {
-        Icon(
-            imageVector = Icons.Rounded.Brightness6,
-            contentDescription = stringResource(id = R.string.qr_controls_brightness_adjust)
-        )
+        Column(
+            modifier = Modifier.padding(
+                horizontal = 12.dp,
+                vertical = if (expanded) 16.dp else 12.dp
+            ),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            IconButton(
+                onClick = onToggle,
+                enabled = enabled
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Brightness6,
+                    contentDescription = stringResource(id = R.string.qr_controls_brightness_adjust),
+                    tint = if (expanded && enabled) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.4f)
+                    }
+                )
+            }
 
-        Slider(
-            value = clampedValue,
-            onValueChange = { newValue ->
-                val normalized = newValue.coerceIn(range.start, range.endInclusive)
-                onValueChange(normalized)
-            },
-            valueRange = range,
-            enabled = enabled,
-            modifier = Modifier
-                .height(200.dp)
-                .width(48.dp)
-                .graphicsLayer { rotationZ = -90f }
-        )
+            AnimatedVisibility(visible = expanded && enabled) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Slider(
+                        value = clampedValue,
+                        onValueChange = { newValue ->
+                            val normalized = newValue.coerceIn(range.start, range.endInclusive)
+                            onValueChange(normalized)
+                        },
+                        valueRange = range,
+                        enabled = enabled,
+                        modifier = Modifier
+                            .height(200.dp)
+                            .width(48.dp)
+                            .graphicsLayer { rotationZ = -90f }
+                    )
 
-        Text(
-            text = String.format(Locale.getDefault(), "%+d", clampedValue.roundToInt()),
-            style = MaterialTheme.typography.bodyMedium
-        )
+                    Text(
+                        text = String.format(Locale.getDefault(), "%+d", clampedValue.roundToInt()),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+                Text(text = stringResource(id = actionLabel))
+            }
+        }
     }
 }
 
@@ -657,7 +712,6 @@ private fun DetectionDetailsPanel(
                 TextButton(onClick = onSaveRecord) {
                     Text(text = stringResource(id = R.string.qr_action_open_existing_secondary))
                 }
-                Text(text = stringResource(id = actionLabel))
             }
         }
     }
@@ -666,16 +720,27 @@ private fun DetectionDetailsPanel(
 @Composable
 private fun ViewfinderOverlay(
     modifier: Modifier = Modifier,
-    state: ScannerWorkflowState
+    state: ScannerWorkflowState,
+    detection: QrDetection?
 ) {
     val borderColor = when (state) {
         ScannerWorkflowState.Idle -> Color.White.copy(alpha = 0.9f)
         is ScannerWorkflowState.Detecting -> Color(0xFFFFC107)
         is ScannerWorkflowState.Success -> Color(0xFF4CAF50)
     }
+    val highlightColor = when (state) {
+        is ScannerWorkflowState.Success -> Color(0xFF4CAF50)
+        is ScannerWorkflowState.Detecting -> Color(0xFFFFC107)
+        else -> Color(0xFF4CAF50)
+    }
+    val overlayAlpha = when (state) {
+        ScannerWorkflowState.Idle -> 0.55f
+        is ScannerWorkflowState.Detecting -> 0.42f
+        is ScannerWorkflowState.Success -> 0.32f
+    }
 
     Canvas(modifier = modifier.graphicsLayer(alpha = 0.99f)) {
-        val overlayColor = Color.Black.copy(alpha = 0.55f)
+        val overlayColor = Color.Black.copy(alpha = overlayAlpha)
         drawRect(color = overlayColor)
 
         val rectWidth = size.width * 0.72f
@@ -700,6 +765,35 @@ private fun ViewfinderOverlay(
             cornerRadius = CornerRadius(48f, 48f),
             style = Stroke(width = 6f)
         )
+
+        val normalizedBox = detection?.normalizedBoundingBox
+        if (normalizedBox != null) {
+            val leftRatio = normalizedBox.left.coerceIn(0f, 1f)
+            val topRatio = normalizedBox.top.coerceIn(0f, 1f)
+            val rightRatio = normalizedBox.right.coerceIn(0f, 1f)
+            val bottomRatio = normalizedBox.bottom.coerceIn(0f, 1f)
+            val widthPx = max((rightRatio - leftRatio) * size.width, 0f)
+            val heightPx = max((bottomRatio - topRatio) * size.height, 0f)
+            if (widthPx > 0f && heightPx > 0f) {
+                val highlightTopLeft = Offset(leftRatio * size.width, topRatio * size.height)
+                val highlightSize = Size(widthPx, heightPx)
+
+                drawRoundRect(
+                    color = highlightColor.copy(alpha = 0.25f),
+                    topLeft = highlightTopLeft,
+                    size = highlightSize,
+                    cornerRadius = CornerRadius(32f, 32f)
+                )
+
+                drawRoundRect(
+                    color = highlightColor,
+                    topLeft = highlightTopLeft,
+                    size = highlightSize,
+                    cornerRadius = CornerRadius(32f, 32f),
+                    style = Stroke(width = 4f)
+                )
+            }
+        }
     }
 }
 
