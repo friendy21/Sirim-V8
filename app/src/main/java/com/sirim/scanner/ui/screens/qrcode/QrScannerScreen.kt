@@ -467,6 +467,41 @@ private fun DynamicButtonPanel(
                     }
                 }
             }
+
+            is ScannerWorkflowState.Success -> {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    FilledTonalButton(onClick = onSaveFrame) {
+                        Icon(
+                            imageVector = Icons.Rounded.Save,
+                            contentDescription = stringResource(id = R.string.qr_controls_save_frame)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = stringResource(id = R.string.qr_controls_save_frame))
+                    }
+
+                    FilledTonalButton(onClick = onRetake) {
+                        Icon(
+                            imageVector = Icons.Rounded.Refresh,
+                            contentDescription = stringResource(id = R.string.qr_controls_retake)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = stringResource(id = R.string.qr_controls_retake))
+                    }
+                },
+                onRetake = {
+                    previewController?.resumeAnalysis()
+                    frozenBitmap = null
+                    label = ""
+                    fieldSource = ""
+                    fieldNote = ""
+                    viewModel.retry()
+                }
+            )
         }
     }
 }
@@ -498,6 +533,7 @@ private fun SirimReferenceCard(modifier: Modifier = Modifier) {
                 painter = painterResource(id = R.drawable.img_sirim_reference),
                 contentDescription = stringResource(id = R.string.qr_reference_content_description)
             )
+        }
 
             Column(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -657,6 +693,7 @@ private fun DetectionDetailsPanel(
                 TextButton(onClick = onSaveRecord) {
                     Text(text = stringResource(id = R.string.qr_action_open_existing_secondary))
                 }
+                Text(text = stringResource(id = actionLabel))
             }
         }
     }
