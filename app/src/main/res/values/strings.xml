@@ -37,4 +37,9 @@
     <string name="qr_controls_flash">Flash</string>
     <string name="qr_controls_flash_on">Turn flash off</string>
     <string name="qr_controls_flash_off">Turn flash on</string>
+    <string name="qr_controls_settings">Open settings</string>
+    <string name="qr_controls_save_frame">Save</string>
+    <string name="qr_controls_retake">Retake</string>
+    <string name="qr_save_image_success">Scan saved to Pictures</string>
+    <string name="qr_save_image_failure">Unable to save scan</string>
 </resources>
