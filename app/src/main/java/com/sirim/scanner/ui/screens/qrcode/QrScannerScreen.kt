@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Brightness6
@@ -30,13 +32,14 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -52,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -130,19 +134,6 @@ fun QrScannerScreen(
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(id = R.string.qr_scanner_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.Rounded.ArrowBack,
-                            contentDescription = stringResource(id = R.string.cd_back)
-                        )
-                    }
-                }
-            )
-        },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { padding ->
         if (!hasCameraPermission) {
@@ -167,32 +158,31 @@ fun QrScannerScreen(
                     viewModel = viewModel,
                     onCameraReady = { camera = it }
                 )
-            }
 
-            CameraControlsCard(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                zoom = zoomState?.value?.linearZoom ?: 0f,
-                zoomEnabled = zoomState?.value != null,
-                onZoomChange = { value ->
-                    camera?.cameraControl?.setLinearZoom(value.coerceIn(0f, 1f))
-                },
-                brightnessValue = brightnessSlider,
-                brightnessRange = brightnessRange,
-                brightnessEnabled = isExposureSupported,
-                onBrightnessChange = { value ->
-                    brightnessSlider = value
-                    camera?.cameraControl?.setExposureCompensationIndex(value.roundToInt())
-                },
-                isFlashOn = isFlashOn,
-                flashEnabled = hasFlashUnit,
-                onToggleFlash = {
-                    if (hasFlashUnit) {
-                        camera?.cameraControl?.enableTorch(!isFlashOn)
+                CameraOverlay(
+                    modifier = Modifier.fillMaxSize(),
+                    onBack = onBack,
+                    isFlashOn = isFlashOn,
+                    flashEnabled = hasFlashUnit,
+                    onToggleFlash = {
+                        if (hasFlashUnit) {
+                            camera?.cameraControl?.enableTorch(!isFlashOn)
+                        }
+                    },
+                    zoom = zoomState?.value?.linearZoom ?: 0f,
+                    zoomEnabled = zoomState?.value != null,
+                    onZoomChange = { value ->
+                        camera?.cameraControl?.setLinearZoom(value.coerceIn(0f, 1f))
+                    },
+                    brightnessValue = brightnessSlider,
+                    brightnessRange = brightnessRange,
+                    brightnessEnabled = isExposureSupported,
+                    onBrightnessChange = { value ->
+                        brightnessSlider = value
+                        camera?.cameraControl?.setExposureCompensationIndex(value.roundToInt())
                     }
-                }
-            )
+                )
+            }
 
             Card(
                 modifier = Modifier
@@ -267,36 +257,94 @@ fun QrScannerScreen(
 }
 
 @Composable
-private fun CameraControlsCard(
+private fun CameraOverlay(
     modifier: Modifier,
+    onBack: () -> Unit,
+    isFlashOn: Boolean,
+    flashEnabled: Boolean,
+    onToggleFlash: () -> Unit,
     zoom: Float,
     zoomEnabled: Boolean,
     onZoomChange: (Float) -> Unit,
     brightnessValue: Float,
     brightnessRange: ClosedFloatingPointRange<Float>?,
     brightnessEnabled: Boolean,
-    onBrightnessChange: (Float) -> Unit,
-    isFlashOn: Boolean,
-    flashEnabled: Boolean,
-    onToggleFlash: () -> Unit
+    onBrightnessChange: (Float) -> Unit
 ) {
-    Card(modifier = modifier) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+    Box(modifier = modifier) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 24.dp)
+                .align(Alignment.TopCenter),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            CameraIconButton(
+                icon = Icons.Rounded.ArrowBack,
+                contentDescription = stringResource(id = R.string.cd_back),
+                onClick = onBack,
+                enabled = true
+            )
+
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                tonalElevation = 6.dp,
+                shape = RoundedCornerShape(16.dp)
+            ) {
                 Text(
-                    text = stringResource(id = R.string.qr_controls_zoom),
-                    fontWeight = FontWeight.SemiBold
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    text = stringResource(id = R.string.qr_scanner_title),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.titleSmall
                 )
+            }
+
+            val flashIcon = if (isFlashOn) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff
+            val flashDescription = if (isFlashOn) {
+                R.string.qr_controls_flash_on
+            } else {
+                R.string.qr_controls_flash_off
+            }
+            CameraIconButton(
+                icon = flashIcon,
+                contentDescription = stringResource(id = flashDescription),
+                onClick = onToggleFlash,
+                enabled = flashEnabled,
+                isActive = isFlashOn
+            )
+        }
+
+        val zoomValue = zoom.coerceIn(0f, 1f)
+        val sliderRange = brightnessRange ?: (brightnessValue..brightnessValue)
+        val brightnessMin = sliderRange.start
+        val brightnessMax = sliderRange.endInclusive
+        val clampedBrightness = brightnessValue.coerceIn(brightnessMin, brightnessMax)
+
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .align(Alignment.BottomCenter),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            tonalElevation = 8.dp,
+            shape = RoundedCornerShape(28.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Rounded.ZoomOut,
                         contentDescription = stringResource(id = R.string.qr_controls_zoom_decrease)
                     )
                     Slider(
-                        value = zoom.coerceIn(0f, 1f),
+                        value = zoomValue,
                         onValueChange = { onZoomChange(it.coerceIn(0f, 1f)) },
                         modifier = Modifier.weight(1f),
                         enabled = zoomEnabled,
@@ -307,51 +355,57 @@ private fun CameraControlsCard(
                         contentDescription = stringResource(id = R.string.qr_controls_zoom_increase)
                     )
                 }
-            }
 
-            val sliderRange = brightnessRange ?: (0f..0f)
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = stringResource(id = R.string.qr_controls_brightness),
-                    fontWeight = FontWeight.SemiBold
-                )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Rounded.Brightness6,
                         contentDescription = stringResource(id = R.string.qr_controls_brightness_adjust)
                     )
                     Slider(
-                        value = brightnessValue.coerceIn(sliderRange.start, sliderRange.endInclusive),
+                        value = clampedBrightness,
                         onValueChange = { value ->
-                            val clamped = value.coerceIn(sliderRange.start, sliderRange.endInclusive)
+                            val clamped = value.coerceIn(brightnessMin, brightnessMax)
                             onBrightnessChange(clamped)
                         },
                         modifier = Modifier.weight(1f),
                         enabled = brightnessEnabled,
                         valueRange = sliderRange
                     )
+                    Text(
+                        text = String.format("%+d", clampedBrightness.roundToInt()),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
                 }
             }
+        }
+    }
+}
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = stringResource(id = R.string.qr_controls_flash),
-                    fontWeight = FontWeight.SemiBold
-                )
-                IconButton(onClick = onToggleFlash, enabled = flashEnabled) {
-                    val icon = if (isFlashOn) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff
-                    val description = if (isFlashOn) {
-                        R.string.qr_controls_flash_on
-                    } else {
-                        R.string.qr_controls_flash_off
-                    }
-                    Icon(imageVector = icon, contentDescription = stringResource(id = description))
-                }
-            }
+@Composable
+private fun CameraIconButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    isActive: Boolean = false
+) {
+    Surface(
+        shape = CircleShape,
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp,
+        color = if (isActive) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f)
+        } else {
+            MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
+        },
+        contentColor = if (isActive) {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        } else {
+            MaterialTheme.colorScheme.onSurface
+        }
+    ) {
+        IconButton(onClick = onClick, enabled = enabled) {
+            Icon(imageVector = icon, contentDescription = contentDescription)
         }
     }
 }
