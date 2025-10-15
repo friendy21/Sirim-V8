@@ -14,9 +14,9 @@ sealed class StorageRecord {
         override val createdAt: Long = lastUpdated
         override val title: String = "SIRIM Scanner 2.0"
         override val description: String = when (totalRecords) {
-            0 -> "No QR captures stored"
-            1 -> "1 QR capture stored"
-            else -> "$totalRecords QR captures stored"
+            0 -> "No text captures stored"
+            1 -> "1 text capture stored"
+            else -> "$totalRecords text captures stored"
         }
     }
 

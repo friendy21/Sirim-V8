@@ -197,9 +197,6 @@ private fun NavGraph(container: AppContainer, navController: NavHostController) 
                 onBack = { navController.popBackStack() },
                 onOpenQrScanner = {
                     navController.navigate(Destinations.QrScanner.route)
-                },
-                onOpenSkuScanner = {
-                    navController.navigate(Destinations.SkuScanner.route)
                 }
             )
         }
