@@ -1,5 +1,6 @@
 package com.sirim.scanner.util
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -14,10 +15,10 @@ class MainDispatcherRule(
 ) : TestWatcher() {
 
     override fun starting(description: Description) {
-        setMain(dispatcher)
+        Dispatchers.setMain(dispatcher)
     }
 
     override fun finished(description: Description) {
-        resetMain()
+        Dispatchers.resetMain()
     }
 }
