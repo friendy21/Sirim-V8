@@ -789,13 +789,13 @@ private fun BrightnessControl(
                             .graphicsLayer { rotationZ = -90f }
                     )
 
-                        Text(
-                            text = String.format(Locale.getDefault(), "%+d", clampedValue.roundToInt()),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
+                    Text(
+                        text = String.format(Locale.getDefault(), "%+d", clampedValue.roundToInt()),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
                 }
             }
+        }
     }
 }
 
