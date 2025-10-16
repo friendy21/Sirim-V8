@@ -37,7 +37,6 @@
     <string name="qr_controls_flash_on">Turn flash off</string>
     <string name="qr_controls_flash_off">Turn flash on</string>
     <string name="qr_controls_settings">Open settings</string>
-    <string name="qr_controls_zoom_hide">Hide zoom controls</string>
     <string name="qr_controls_zoom_value">Zoom: %1$d%%</string>
     <string name="qr_zoom_ratio_label">Zoom ratio: %1$.1fx</string>
     <string name="qr_controls_retake">Retake</string>

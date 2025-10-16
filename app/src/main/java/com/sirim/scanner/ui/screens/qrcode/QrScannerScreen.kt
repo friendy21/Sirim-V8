@@ -21,6 +21,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,6 +31,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -162,12 +164,6 @@ fun QrScannerScreen(
         }
     }
 
-    LaunchedEffect(scannerState) {
-        if (scannerState is ScannerWorkflowState.Success) {
-            isBrightnessExpanded = false
-        }
-    }
-
     LaunchedEffect(viewModel) {
         viewModel.status.collectLatest { message ->
             snackbarHostState.showSnackbar(message)
@@ -208,19 +204,8 @@ fun QrScannerScreen(
         }
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
-    ) { padding ->
-        if (!hasCameraPermission) {
-            PermissionRationale(modifier = Modifier.padding(padding))
-            return@Scaffold
-        }
-
-        Box(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-        ) {
+    val previewContent: @Composable (Modifier) -> Unit = { containerModifier ->
+        Box(modifier = containerModifier) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -261,14 +246,6 @@ fun QrScannerScreen(
                 detection = overlayDetection
             )
 
-            CameraTopBar(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.TopCenter)
-                    .padding(horizontal = 16.dp, vertical = 24.dp),
-                onBack = onBack
-            )
-
             BrightnessControl(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
@@ -296,64 +273,109 @@ fun QrScannerScreen(
                 }
             )
 
-            Column(
+            CameraTopBar(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 40.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                if (scannerState is ScannerWorkflowState.Idle && lastDetection == null) {
-                    SirimReferenceCard(
-                        modifier = Modifier.fillMaxWidth()
+                    .align(Alignment.TopCenter)
+                    .padding(horizontal = 16.dp, vertical = 24.dp),
+                onBack = onBack
+            )
+        }
+    }
+
+    Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
+    ) { padding ->
+        if (!hasCameraPermission) {
+            PermissionRationale(modifier = Modifier.padding(padding))
+            return@Scaffold
+        }
+
+        BoxWithConstraints(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize()
+        ) {
+            val isLandscape = maxWidth > maxHeight
+            val showReferenceCard = scannerState is ScannerWorkflowState.Idle && lastDetection == null
+
+            if (isLandscape) {
+                Row(modifier = Modifier.fillMaxSize()) {
+                    previewContent(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    )
+
+                    ScannerControlPanel(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .widthIn(min = maxWidth * 0.32f, max = maxWidth * 0.45f)
+                            .padding(16.dp),
+                        state = scannerState,
+                        lastDetection = lastDetection,
+                        showReference = showReferenceCard,
+                        zoomState = currentZoomState,
+                        zoomValue = zoomSlider,
+                        onZoomChange = { value ->
+                            val newZoom = value.coerceIn(0f, 1f)
+                            zoomSlider = newZoom
+                            camera?.cameraControl?.setLinearZoom(newZoom)
+                        },
+                        isFlashOn = isFlashOn,
+                        flashEnabled = hasFlashUnit,
+                        onToggleFlash = {
+                            if (hasFlashUnit) {
+                                camera?.cameraControl?.enableTorch(!isFlashOn)
+                            }
+                        },
+                        onOpenSettings = onOpenSettings,
+                        onRetake = {
+                            previewController?.resumeAnalysis()
+                            frozenBitmap = null
+                            isBrightnessExpanded = false
+                            viewModel.retry()
+                        }
                     )
                 }
+            } else {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    previewContent(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                    )
 
-                DetectionDetailsPanel(
-                    modifier = Modifier.fillMaxWidth(),
-                    lastDetection = lastDetection,
-                    zoomValue = zoomSlider,
-                    zoomState = currentZoomState,
-                    zoomExpanded = isZoomExpanded,
-                    onToggleZoom = {
-                        isZoomExpanded = !isZoomExpanded
-                        if (isZoomExpanded) {
+                    ScannerControlPanel(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 40.dp),
+                        state = scannerState,
+                        lastDetection = lastDetection,
+                        showReference = showReferenceCard,
+                        zoomState = currentZoomState,
+                        zoomValue = zoomSlider,
+                        onZoomChange = { value ->
+                            val newZoom = value.coerceIn(0f, 1f)
+                            zoomSlider = newZoom
+                            camera?.cameraControl?.setLinearZoom(newZoom)
+                        },
+                        isFlashOn = isFlashOn,
+                        flashEnabled = hasFlashUnit,
+                        onToggleFlash = {
+                            if (hasFlashUnit) {
+                                camera?.cameraControl?.enableTorch(!isFlashOn)
+                            }
+                        },
+                        onOpenSettings = onOpenSettings,
+                        onRetake = {
+                            previewController?.resumeAnalysis()
+                            frozenBitmap = null
                             isBrightnessExpanded = false
+                            viewModel.retry()
                         }
-                    },
-                    onZoomChange = { value ->
-                        val newZoom = value.coerceIn(0f, 1f)
-                        zoomSlider = newZoom
-                        camera?.cameraControl?.setLinearZoom(newZoom)
-                    }
-                )
-
-                DynamicButtonPanel(
-                    modifier = Modifier.fillMaxWidth(),
-                    state = scannerState,
-                    isFlashOn = isFlashOn,
-                    flashEnabled = hasFlashUnit,
-                    onToggleFlash = {
-                        if (hasFlashUnit) {
-                            camera?.cameraControl?.enableTorch(!isFlashOn)
-                        }
-                    },
-                    onOpenSettings = onOpenSettings,
-                    onZoomTap = {
-                        val nextZoom = if (zoomSlider < 0.5f) 0.5f else 0f
-                        zoomSlider = nextZoom
-                        camera?.cameraControl?.setLinearZoom(nextZoom)
-                        isZoomExpanded = false
-                    },
-                    onRetake = {
-                        previewController?.resumeAnalysis()
-                        frozenBitmap = null
-                        isBrightnessExpanded = false
-                        isZoomExpanded = false
-                        viewModel.retry()
-                    }
-                )
+                    )
+                }
             }
         }
     }
@@ -398,14 +420,177 @@ private fun CameraTopBar(
 }
 
 @Composable
-private fun DynamicButtonPanel(
+private fun ScannerControlPanel(
+    modifier: Modifier = Modifier,
+    state: ScannerWorkflowState,
+    lastDetection: QrDetection?,
+    showReference: Boolean,
+    zoomState: ZoomState?,
+    zoomValue: Float,
+    onZoomChange: (Float) -> Unit,
+    isFlashOn: Boolean,
+    flashEnabled: Boolean,
+    onToggleFlash: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onRetake: () -> Unit
+) {
+    Column(
+        modifier = modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        if (showReference) {
+            SirimReferenceCard(modifier = Modifier.fillMaxWidth())
+        }
+
+        DetectionDetailsCard(
+            modifier = Modifier.fillMaxWidth(),
+            lastDetection = lastDetection
+        )
+
+        ZoomSliderCard(
+            modifier = Modifier.fillMaxWidth(),
+            zoomState = zoomState,
+            zoomValue = zoomValue,
+            onZoomChange = onZoomChange
+        )
+
+        CameraActionButtons(
+            modifier = Modifier.fillMaxWidth(),
+            state = state,
+            isFlashOn = isFlashOn,
+            flashEnabled = flashEnabled,
+            onToggleFlash = onToggleFlash,
+            onOpenSettings = onOpenSettings,
+            onRetake = onRetake
+        )
+    }
+}
+
+@Composable
+private fun DetectionDetailsCard(
+    modifier: Modifier = Modifier,
+    lastDetection: QrDetection?
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = stringResource(id = R.string.qr_detected_payload_label),
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = stringResource(id = R.string.qr_detected_payload_caption),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Surface(
+                tonalElevation = 2.dp,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp),
+                    text = lastDetection?.payload
+                        ?: stringResource(id = R.string.qr_detection_waiting),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ZoomSliderCard(
+    modifier: Modifier = Modifier,
+    zoomState: ZoomState?,
+    zoomValue: Float,
+    onZoomChange: (Float) -> Unit
+) {
+    val zoomPercent = (zoomValue * 100).roundToInt()
+    val zoomRatio = zoomState?.let { state ->
+        state.minZoomRatio + (state.maxZoomRatio - state.minZoomRatio) * zoomValue
+    }
+
+    Surface(
+        modifier = modifier,
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp,
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.ZoomIn,
+                    contentDescription = stringResource(id = R.string.qr_controls_zoom)
+                )
+                Text(
+                    text = stringResource(id = R.string.qr_controls_zoom),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    text = stringResource(id = R.string.qr_controls_zoom_value, zoomPercent),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+
+            Slider(
+                value = zoomValue,
+                onValueChange = { onZoomChange(it.coerceIn(0f, 1f)) },
+                valueRange = 0f..1f,
+                steps = 0,
+                enabled = zoomState != null,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            if (zoomRatio != null) {
+                Text(
+                    text = stringResource(
+                        id = R.string.qr_zoom_ratio_label,
+                        (zoomRatio * 10).roundToInt() / 10f
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CameraActionButtons(
     modifier: Modifier = Modifier,
     state: ScannerWorkflowState,
     isFlashOn: Boolean,
     flashEnabled: Boolean,
     onToggleFlash: () -> Unit,
     onOpenSettings: () -> Unit,
-    onZoomTap: () -> Unit,
     onRetake: () -> Unit
 ) {
     Surface(
@@ -452,18 +637,13 @@ private fun DynamicButtonPanel(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp, vertical = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    FilledTonalButton(onClick = onZoomTap) {
-                        Icon(
-                            imageVector = Icons.Rounded.ZoomIn,
-                            contentDescription = stringResource(id = R.string.qr_controls_zoom)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = stringResource(id = R.string.qr_controls_zoom))
-                    }
-
-                    FilledTonalButton(onClick = onRetake) {
+                    FilledTonalButton(
+                        onClick = onRetake,
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Icon(
                             imageVector = Icons.Rounded.Refresh,
                             contentDescription = stringResource(id = R.string.qr_controls_retake)
@@ -471,6 +651,27 @@ private fun DynamicButtonPanel(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(text = stringResource(id = R.string.qr_controls_retake))
                     }
+
+                    val flashIcon = if (isFlashOn) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff
+                    val flashDescription = if (isFlashOn) {
+                        R.string.qr_controls_flash_on
+                    } else {
+                        R.string.qr_controls_flash_off
+                    }
+                    CameraIconButton(
+                        icon = flashIcon,
+                        contentDescription = stringResource(id = flashDescription),
+                        onClick = onToggleFlash,
+                        enabled = flashEnabled,
+                        isActive = isFlashOn
+                    )
+
+                    CameraIconButton(
+                        icon = Icons.Rounded.Settings,
+                        contentDescription = stringResource(id = R.string.qr_controls_settings),
+                        onClick = onOpenSettings,
+                        enabled = true
+                    )
                 }
             }
         }
@@ -567,26 +768,26 @@ private fun BrightnessControl(
             }
 
             AnimatedVisibility(visible = expanded && enabled) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        val steps = (range.endInclusive.roundToInt() - range.start.roundToInt() - 1)
-                            .coerceAtLeast(0)
-                        Slider(
-                            value = clampedValue,
-                            onValueChange = { newValue ->
-                                val normalized = newValue.coerceIn(range.start, range.endInclusive)
-                                onValueChange(normalized)
-                            },
-                            valueRange = range,
-                            steps = steps,
-                            enabled = enabled,
-                            modifier = Modifier
-                                .width(200.dp)
-                                .height(48.dp)
-                                .graphicsLayer { rotationZ = -90f }
-                        )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    val steps = (range.endInclusive.roundToInt() - range.start.roundToInt() - 1)
+                        .coerceAtLeast(0)
+                    Slider(
+                        value = clampedValue,
+                        onValueChange = { newValue ->
+                            val normalized = newValue.coerceIn(range.start, range.endInclusive)
+                            onValueChange(normalized)
+                        },
+                        valueRange = range,
+                        steps = steps,
+                        enabled = enabled,
+                        modifier = Modifier
+                            .width(200.dp)
+                            .height(48.dp)
+                            .graphicsLayer { rotationZ = -90f }
+                    )
 
                         Text(
                             text = String.format(Locale.getDefault(), "%+d", clampedValue.roundToInt()),
@@ -595,134 +796,6 @@ private fun BrightnessControl(
                     }
                 }
             }
-    }
-}
-
-@Composable
-private fun DetectionDetailsPanel(
-    modifier: Modifier = Modifier,
-    lastDetection: QrDetection?,
-    zoomValue: Float,
-    zoomState: ZoomState?,
-    zoomExpanded: Boolean,
-    onToggleZoom: () -> Unit,
-    onZoomChange: (Float) -> Unit
-) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
-        tonalElevation = 6.dp,
-        shadowElevation = 6.dp,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = stringResource(id = R.string.qr_detected_payload_label),
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = stringResource(id = R.string.qr_detected_payload_caption),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Surface(
-                tonalElevation = 2.dp,
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp),
-                    text = lastDetection?.payload
-                        ?: stringResource(id = R.string.qr_detection_waiting),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
-            ZoomControl(
-                zoomValue = zoomValue,
-                zoomState = zoomState,
-                expanded = zoomExpanded,
-                onToggle = onToggleZoom,
-                onZoomChange = onZoomChange
-            )
-
-            if (zoomExpanded && zoomState != null) {
-                val ratio = zoomState.minZoomRatio +
-                    (zoomState.maxZoomRatio - zoomState.minZoomRatio) * zoomValue
-                Text(
-                    text = stringResource(
-                        id = R.string.qr_zoom_ratio_label,
-                        (ratio * 10).roundToInt() / 10f
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ZoomControl(
-    zoomValue: Float,
-    zoomState: ZoomState?,
-    expanded: Boolean,
-    onToggle: () -> Unit,
-    onZoomChange: (Float) -> Unit
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        tonalElevation = 2.dp,
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            FilledTonalButton(onClick = onToggle, modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = stringResource(
-                        id = if (expanded) R.string.qr_controls_zoom_hide else R.string.qr_controls_zoom
-                    )
-                )
-            }
-
-            AnimatedVisibility(visible = expanded && zoomState != null) {
-                zoomState?.let { state ->
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Slider(
-                            value = zoomValue,
-                            onValueChange = { onZoomChange(it.coerceIn(0f, 1f)) },
-                            valueRange = 0f..1f,
-                            steps = 0,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        val zoomPercent = ((state.minZoomRatio +
-                            (state.maxZoomRatio - state.minZoomRatio) * zoomValue) * 100).roundToInt()
-                        Text(
-                            text = stringResource(
-                                id = R.string.qr_controls_zoom_value,
-                                zoomPercent
-                            ),
-                            style = MaterialTheme.typography.bodyMedium,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                }
-            }
-        }
     }
 }
 
