@@ -12,6 +12,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -24,6 +25,8 @@ import androidx.navigation.navArgument
 import com.sirim.scanner.data.AppContainer
 import com.sirim.scanner.data.preferences.StartupPage
 import com.sirim.scanner.ui.common.AuthenticationDialog
+import com.sirim.scanner.ui.common.SkuSessionGuardDialog
+import com.sirim.scanner.ui.common.SkuSessionGuardState
 import com.sirim.scanner.ui.screens.feedback.FeedbackScreen
 import com.sirim.scanner.ui.screens.qrcode.QrScannerScreen
 import com.sirim.scanner.ui.screens.settings.SettingsScreen
@@ -36,6 +39,7 @@ import com.sirim.scanner.ui.screens.startup.StartupScreen
 import com.sirim.scanner.ui.theme.SirimScannerTheme
 import com.sirim.scanner.ui.viewmodel.PreferencesViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -85,6 +89,53 @@ private fun NavGraph(container: AppContainer, navController: NavHostController) 
     val authError by preferencesViewModel.authError.collectAsState()
     var showAuthDialog by remember { mutableStateOf(false) }
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val skuRecords by container.repository.skuRecords.collectAsState(initial = emptyList())
+    val currentSkuId by container.preferencesManager.currentSkuIdFlow.collectAsState(initial = null)
+    var sessionGuardState by remember { mutableStateOf<SkuSessionGuardState?>(null) }
+    var pendingSkuNavigation by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+
+    fun clearSessionGuard(cancelPending: Boolean = true) {
+        sessionGuardState = null
+        if (cancelPending) {
+            pendingSkuNavigation = null
+        }
+    }
+
+    fun ensureSkuSession(onReady: () -> Unit) {
+        val activeSku = currentSkuId?.let { id -> skuRecords.firstOrNull { it.id == id } }
+        if (activeSku != null) {
+            onReady()
+            return
+        }
+        pendingSkuNavigation = onReady
+        if (skuRecords.isEmpty()) {
+            sessionGuardState = SkuSessionGuardState.PromptCapture(
+                onDismiss = { clearSessionGuard() },
+                onOpenSkuScanner = {
+                    clearSessionGuard()
+                    navController.navigate(Destinations.SkuScanner.route)
+                }
+            )
+        } else {
+            val sorted = skuRecords.sortedByDescending { it.createdAt }
+            val defaultId = sorted.firstOrNull()?.id
+            sessionGuardState = SkuSessionGuardState.SelectSession(
+                options = sorted,
+                defaultSelection = defaultId,
+                onConfirm = { selectedId ->
+                    coroutineScope.launch {
+                        container.preferencesManager.setCurrentSku(selectedId)
+                        val action = pendingSkuNavigation
+                        clearSessionGuard(cancelPending = false)
+                        pendingSkuNavigation = null
+                        action?.invoke()
+                    }
+                },
+                onDismiss = { clearSessionGuard() }
+            )
+        }
+    }
 
     fun requestAuthentication(afterAuth: () -> Unit, forcePrompt: Boolean = false) {
         if (!forcePrompt && isSessionValid) {
@@ -120,14 +171,22 @@ private fun NavGraph(container: AppContainer, navController: NavHostController) 
                     StartupPage.SkuScanner -> Destinations.SkuScanner.route
                     StartupPage.Storage -> Destinations.Storage.route
                 }
-                navController.navigate(target) {
-                    popUpTo(Destinations.StartupResolver.route) { inclusive = true }
+                if (target == Destinations.QrScanner.route) {
+                    ensureSkuSession {
+                        navController.navigate(target) {
+                            popUpTo(Destinations.StartupResolver.route) { inclusive = true }
+                        }
+                    }
+                } else {
+                    navController.navigate(target) {
+                        popUpTo(Destinations.StartupResolver.route) { inclusive = true }
+                    }
                 }
             }
         }
         composable(Destinations.Startup.route) {
             StartupScreen(
-                onOpenQrScanner = { navController.navigate(Destinations.QrScanner.route) },
+                onOpenQrScanner = { ensureSkuSession { navController.navigate(Destinations.QrScanner.route) } },
                 onOpenSkuScanner = { navController.navigate(Destinations.SkuScanner.route) },
                 onOpenStorage = { navController.navigate(Destinations.Storage.route) },
                 onOpenSettings = { navController.navigate(Destinations.Settings.route) }
@@ -143,7 +202,8 @@ private fun NavGraph(container: AppContainer, navController: NavHostController) 
                 },
                 onOpenSettings = { navController.navigate(Destinations.Settings.route) },
                 repository = container.repository,
-                analyzer = container.qrAnalyzer
+                analyzer = container.qrAnalyzer,
+                sessionTracker = container.preferencesManager
             )
         }
         composable(Destinations.SkuScanner.route) {
@@ -197,7 +257,7 @@ private fun NavGraph(container: AppContainer, navController: NavHostController) 
                 },
                 onBack = { navController.popBackStack() },
                 onOpenQrScanner = {
-                    navController.navigate(Destinations.QrScanner.route)
+                    ensureSkuSession { navController.navigate(Destinations.QrScanner.route) }
                 }
             )
         }
@@ -234,4 +294,6 @@ private fun NavGraph(container: AppContainer, navController: NavHostController) 
             preferencesViewModel.authenticate(username, password)
         }
     )
+
+    SkuSessionGuardDialog(state = sessionGuardState)
 }

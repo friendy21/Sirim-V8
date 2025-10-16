@@ -183,7 +183,7 @@ class SkuScannerViewModel private constructor(
                     imagePath = imagePath
                 )
 
-                exportSkuWorkbook()
+                exportSkuWorkbook(recordId)
 
                 delay(2000)
                 _captureState.value = CaptureState.Idle
@@ -195,11 +195,12 @@ class SkuScannerViewModel private constructor(
         }
     }
 
-    private fun exportSkuWorkbook() {
+    private fun exportSkuWorkbook(recordId: Long) {
         appScope.launch {
             runCatching {
-                val skuRecords = repository.getAllSkuRecords()
-                val ocrRecords = repository.getAllQrRecords()
+                val selectedSku = repository.getSkuRecord(recordId)
+                val skuRecords = selectedSku?.let(::listOf) ?: emptyList()
+                val ocrRecords = repository.getQrRecordsForSku(recordId)
                 if (skuRecords.isEmpty() && ocrRecords.isEmpty()) return@launch
 
                 val uri = exportManager.exportSkuToExcel(skuRecords, ocrRecords)

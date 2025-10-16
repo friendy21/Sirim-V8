@@ -16,6 +16,12 @@ interface QrRecordDao {
     @Query("SELECT * FROM qr_records ORDER BY captured_at DESC")
     suspend fun getAllRecordsOnce(): List<QrRecord>
 
+    @Query("SELECT * FROM qr_records WHERE sku_id = :skuId ORDER BY captured_at DESC")
+    fun getRecordsForSku(skuId: Long): Flow<List<QrRecord>>
+
+    @Query("SELECT * FROM qr_records WHERE sku_id = :skuId ORDER BY captured_at DESC")
+    suspend fun getRecordsForSkuOnce(skuId: Long): List<QrRecord>
+
     @Query("SELECT * FROM qr_records WHERE id = :id")
     suspend fun getRecordById(id: Long): QrRecord?
 

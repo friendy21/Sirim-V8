@@ -5,8 +5,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.sirim.scanner.data.db.QrRecord
+import com.sirim.scanner.data.db.SkuRecord
 import com.sirim.scanner.data.ocr.QrCodeAnalyzer
 import com.sirim.scanner.data.ocr.QrDetection
+import com.sirim.scanner.data.preferences.SkuSessionTracker
 import com.sirim.scanner.data.repository.SirimRepository
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
@@ -16,12 +18,14 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class QrScannerViewModel private constructor(
     private val repository: SirimRepository,
-    private val analyzer: QrCodeAnalyzer
+    private val analyzer: QrCodeAnalyzer,
+    private val sessionTracker: SkuSessionTracker
 ) : ViewModel() {
 
     private val processing = AtomicBoolean(false)
@@ -39,6 +43,28 @@ class QrScannerViewModel private constructor(
     val status: SharedFlow<String> = _status.asSharedFlow()
 
     private var pendingConfirmationPayload: String? = null
+
+    private val _sessionState = MutableStateFlow<SkuSessionState>(SkuSessionState.Loading)
+    val sessionState: StateFlow<SkuSessionState> = _sessionState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            combine(sessionTracker.currentSkuIdFlow, repository.skuRecords) { currentId, records ->
+                if (currentId == null) {
+                    SkuSessionState.Missing(SessionMissingReason.NotSelected)
+                } else {
+                    val record = records.firstOrNull { it.id == currentId }
+                    if (record != null) {
+                        SkuSessionState.Active(record)
+                    } else {
+                        SkuSessionState.Missing(SessionMissingReason.NotFound)
+                    }
+                }
+            }.collect { state ->
+                _sessionState.value = state
+            }
+        }
+    }
 
     fun analyzeFrame(imageProxy: ImageProxy) {
         if (!processing.compareAndSet(false, true)) {
@@ -107,6 +133,12 @@ class QrScannerViewModel private constructor(
             return
         }
         if (_captureState.value is QrCaptureState.Saving) return
+        val session = sessionState.value
+        val skuId = (session as? SkuSessionState.Active)?.record?.id
+        if (skuId == null) {
+            _status.tryEmit("Select a SKU session before saving")
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             _captureState.value = QrCaptureState.Saving
             val normalizedLabel = label?.takeIf { it.isNotBlank() }?.trim()
@@ -123,7 +155,8 @@ class QrScannerViewModel private constructor(
                 payload = detection.payload,
                 label = normalizedLabel,
                 fieldSource = normalizedSource,
-                fieldNote = normalizedNote
+                fieldNote = normalizedNote,
+                skuId = skuId
             )
             val id = repository.upsertQr(record)
             _captureState.value = QrCaptureState.Saved("Text saved")
@@ -142,13 +175,14 @@ class QrScannerViewModel private constructor(
     companion object {
         fun Factory(
             repository: SirimRepository,
-            analyzer: QrCodeAnalyzer
+            analyzer: QrCodeAnalyzer,
+            sessionTracker: SkuSessionTracker
         ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
                     require(modelClass.isAssignableFrom(QrScannerViewModel::class.java))
-                    return QrScannerViewModel(repository, analyzer) as T
+                    return QrScannerViewModel(repository, analyzer, sessionTracker) as T
                 }
             }
         }
@@ -167,4 +201,15 @@ sealed interface ScannerWorkflowState {
     data object Idle : ScannerWorkflowState
     data class Detecting(val detection: QrDetection) : ScannerWorkflowState
     data class Success(val detection: QrDetection) : ScannerWorkflowState
+}
+
+sealed interface SkuSessionState {
+    data object Loading : SkuSessionState
+    data class Active(val record: SkuRecord) : SkuSessionState
+    data class Missing(val reason: SessionMissingReason) : SkuSessionState
+}
+
+enum class SessionMissingReason {
+    NotSelected,
+    NotFound
 }
