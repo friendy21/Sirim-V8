@@ -1,13 +1,8 @@
 package com.sirim.scanner.ui.screens.qrcode
 
 import android.Manifest
-import android.content.ContentValues
-import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.net.Uri
-import android.os.Build
-import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.Camera
@@ -16,6 +11,7 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.core.TorchState
+import androidx.camera.core.ZoomState
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.AnimatedVisibility
@@ -44,8 +40,8 @@ import androidx.compose.material.icons.rounded.Brightness6
 import androidx.compose.material.icons.rounded.FlashOff
 import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.ZoomIn
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -56,7 +52,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.Slider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -65,7 +60,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -99,19 +93,14 @@ import com.sirim.scanner.R
 import com.sirim.scanner.data.ocr.QrCodeAnalyzer
 import com.sirim.scanner.data.ocr.QrDetection
 import com.sirim.scanner.data.repository.SirimRepository
-import java.io.IOException
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.max
 import kotlin.math.roundToInt
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
+@Suppress("UNUSED_PARAMETER")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QrScannerScreen(
@@ -127,14 +116,13 @@ fun QrScannerScreen(
         factory = QrScannerViewModel.Factory(repository, analyzer)
     )
 
-    val captureState by viewModel.captureState.collectAsStateWithLifecycle()
     val lastDetection by viewModel.lastDetection.collectAsStateWithLifecycle()
     val scannerState by viewModel.scannerState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
-    val coroutineScope = rememberCoroutineScope()
 
     var brightnessSlider by rememberSaveable { mutableFloatStateOf(0f) }
     var isBrightnessExpanded by rememberSaveable { mutableStateOf(false) }
+    var isZoomExpanded by rememberSaveable { mutableStateOf(false) }
     var camera by remember { mutableStateOf<Camera?>(null) }
     var previewController by remember { mutableStateOf<PreviewController?>(null) }
     var frozenBitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -150,10 +138,22 @@ fun QrScannerScreen(
         exposureState?.isExposureCompensationSupported == true && brightnessRange != null
     val isFlashOn = torchState?.value == TorchState.ON
     val hasFlashUnit = camera?.cameraInfo?.hasFlashUnit() == true
+    val currentZoomState = zoomState?.value
+    var zoomSlider by rememberSaveable { mutableFloatStateOf(currentZoomState?.linearZoom ?: 0f) }
 
     LaunchedEffect(camera) {
         brightnessSlider =
             camera?.cameraInfo?.exposureState?.exposureCompensationIndex?.toFloat() ?: 0f
+        zoomSlider = camera?.cameraInfo?.zoomState?.value?.linearZoom ?: 0f
+    }
+
+    LaunchedEffect(currentZoomState?.linearZoom) {
+        currentZoomState?.linearZoom?.let { zoomSlider = it }
+    }
+
+    val currentExposureIndex = exposureState?.exposureCompensationIndex
+    LaunchedEffect(currentExposureIndex) {
+        brightnessSlider = currentExposureIndex?.toFloat() ?: 0f
     }
 
     LaunchedEffect(isExposureSupported) {
@@ -280,6 +280,9 @@ fun QrScannerScreen(
                 onToggle = {
                     if (isExposureSupported) {
                         isBrightnessExpanded = !isBrightnessExpanded
+                        if (isBrightnessExpanded) {
+                            isZoomExpanded = false
+                        }
                     }
                 },
                 onValueChange = { value ->
@@ -310,15 +313,19 @@ fun QrScannerScreen(
                 DetectionDetailsPanel(
                     modifier = Modifier.fillMaxWidth(),
                     lastDetection = lastDetection,
-                    captureState = captureState,
-                    onSaveRecord = {
-                        viewModel.saveRecord(
-                            label = null,
-                            fieldSource = null,
-                            fieldNote = null,
-                            onSaved = onRecordSaved,
-                            onDuplicate = onRecordSaved
-                        )
+                    zoomValue = zoomSlider,
+                    zoomState = currentZoomState,
+                    zoomExpanded = isZoomExpanded,
+                    onToggleZoom = {
+                        isZoomExpanded = !isZoomExpanded
+                        if (isZoomExpanded) {
+                            isBrightnessExpanded = false
+                        }
+                    },
+                    onZoomChange = { value ->
+                        val newZoom = value.coerceIn(0f, 1f)
+                        zoomSlider = newZoom
+                        camera?.cameraControl?.setLinearZoom(newZoom)
                     }
                 )
 
@@ -333,22 +340,17 @@ fun QrScannerScreen(
                         }
                     },
                     onOpenSettings = onOpenSettings,
-                    onSaveFrame = {
-                        val bitmap = frozenBitmap ?: return@DynamicButtonPanel
-                        coroutineScope.launch {
-                            val saved = saveBitmapToPictures(context, bitmap)
-                            val message = if (saved != null) {
-                                context.getString(R.string.qr_save_image_success)
-                            } else {
-                                context.getString(R.string.qr_save_image_failure)
-                            }
-                            snackbarHostState.showSnackbar(message)
-                        }
+                    onZoomTap = {
+                        val nextZoom = if (zoomSlider < 0.5f) 0.5f else 0f
+                        zoomSlider = nextZoom
+                        camera?.cameraControl?.setLinearZoom(nextZoom)
+                        isZoomExpanded = false
                     },
                     onRetake = {
                         previewController?.resumeAnalysis()
                         frozenBitmap = null
                         isBrightnessExpanded = false
+                        isZoomExpanded = false
                         viewModel.retry()
                     }
                 )
@@ -403,7 +405,7 @@ private fun DynamicButtonPanel(
     flashEnabled: Boolean,
     onToggleFlash: () -> Unit,
     onOpenSettings: () -> Unit,
-    onSaveFrame: () -> Unit,
+    onZoomTap: () -> Unit,
     onRetake: () -> Unit
 ) {
     Surface(
@@ -452,13 +454,13 @@ private fun DynamicButtonPanel(
                         .padding(horizontal = 20.dp, vertical = 16.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    FilledTonalButton(onClick = onSaveFrame) {
+                    FilledTonalButton(onClick = onZoomTap) {
                         Icon(
-                            imageVector = Icons.Rounded.Save,
-                            contentDescription = stringResource(id = R.string.qr_controls_save_frame)
+                            imageVector = Icons.Rounded.ZoomIn,
+                            contentDescription = stringResource(id = R.string.qr_controls_zoom)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = stringResource(id = R.string.qr_controls_save_frame))
+                        Text(text = stringResource(id = R.string.qr_controls_zoom))
                     }
 
                     FilledTonalButton(onClick = onRetake) {
@@ -565,31 +567,34 @@ private fun BrightnessControl(
             }
 
             AnimatedVisibility(visible = expanded && enabled) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Slider(
-                        value = clampedValue,
-                        onValueChange = { newValue ->
-                            val normalized = newValue.coerceIn(range.start, range.endInclusive)
-                            onValueChange(normalized)
-                        },
-                        valueRange = range,
-                        enabled = enabled,
-                        modifier = Modifier
-                            .height(200.dp)
-                            .width(48.dp)
-                            .graphicsLayer { rotationZ = -90f }
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        val steps = (range.endInclusive.roundToInt() - range.start.roundToInt() - 1)
+                            .coerceAtLeast(0)
+                        Slider(
+                            value = clampedValue,
+                            onValueChange = { newValue ->
+                                val normalized = newValue.coerceIn(range.start, range.endInclusive)
+                                onValueChange(normalized)
+                            },
+                            valueRange = range,
+                            steps = steps,
+                            enabled = enabled,
+                            modifier = Modifier
+                                .width(200.dp)
+                                .height(48.dp)
+                                .graphicsLayer { rotationZ = -90f }
+                        )
 
-                    Text(
-                        text = String.format(Locale.getDefault(), "%+d", clampedValue.roundToInt()),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                        Text(
+                            text = String.format(Locale.getDefault(), "%+d", clampedValue.roundToInt()),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
                 }
             }
-        }
     }
 }
 
@@ -597,8 +602,11 @@ private fun BrightnessControl(
 private fun DetectionDetailsPanel(
     modifier: Modifier = Modifier,
     lastDetection: QrDetection?,
-    captureState: QrCaptureState,
-    onSaveRecord: () -> Unit
+    zoomValue: Float,
+    zoomState: ZoomState?,
+    zoomExpanded: Boolean,
+    onToggleZoom: () -> Unit,
+    onZoomChange: (Float) -> Unit
 ) {
     Surface(
         modifier = modifier,
@@ -639,25 +647,79 @@ private fun DetectionDetailsPanel(
                 )
             }
 
-            val actionLabel = when (captureState) {
-                is QrCaptureState.Ready -> R.string.qr_action_save
-                is QrCaptureState.Duplicate -> R.string.qr_action_open_existing
-                is QrCaptureState.Saved -> R.string.qr_action_saved
-                is QrCaptureState.Saving -> R.string.qr_action_saving
-                else -> R.string.qr_action_save
+            ZoomControl(
+                zoomValue = zoomValue,
+                zoomState = zoomState,
+                expanded = zoomExpanded,
+                onToggle = onToggleZoom,
+                onZoomChange = onZoomChange
+            )
+
+            if (zoomExpanded && zoomState != null) {
+                val ratio = zoomState.minZoomRatio +
+                    (zoomState.maxZoomRatio - zoomState.minZoomRatio) * zoomValue
+                Text(
+                    text = stringResource(
+                        id = R.string.qr_zoom_ratio_label,
+                        (ratio * 10).roundToInt() / 10f
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ZoomControl(
+    zoomValue: Float,
+    zoomState: ZoomState?,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onZoomChange: (Float) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        tonalElevation = 2.dp,
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            FilledTonalButton(onClick = onToggle, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = stringResource(
+                        id = if (expanded) R.string.qr_controls_zoom_hide else R.string.qr_controls_zoom
+                    )
+                )
             }
 
-            FilledTonalButton(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = onSaveRecord,
-                enabled = captureState is QrCaptureState.Ready || captureState is QrCaptureState.Duplicate
-            ) {
-                Text(text = stringResource(id = actionLabel))
-            }
-
-            if (captureState is QrCaptureState.Duplicate) {
-                TextButton(onClick = onSaveRecord) {
-                    Text(text = stringResource(id = R.string.qr_action_open_existing_secondary))
+            AnimatedVisibility(visible = expanded && zoomState != null) {
+                zoomState?.let { state ->
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Slider(
+                            value = zoomValue,
+                            onValueChange = { onZoomChange(it.coerceIn(0f, 1f)) },
+                            valueRange = 0f..1f,
+                            steps = 0,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        val zoomPercent = ((state.minZoomRatio +
+                            (state.maxZoomRatio - state.minZoomRatio) * zoomValue) * 100).roundToInt()
+                        Text(
+                            text = stringResource(
+                                id = R.string.qr_controls_zoom_value,
+                                zoomPercent
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
             }
         }
@@ -871,40 +933,3 @@ private class PreviewController(
     }
 }
 
-private suspend fun saveBitmapToPictures(
-    context: Context,
-    bitmap: Bitmap
-): Uri? = withContext(Dispatchers.IO) {
-    val resolver = context.contentResolver
-    val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-    } else {
-        MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-    }
-    val fileName = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-    val values = ContentValues().apply {
-        put(MediaStore.Images.Media.DISPLAY_NAME, "SIRIM_Scan_$fileName.jpg")
-        put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/SIRIM Scanner")
-            put(MediaStore.Images.Media.IS_PENDING, 1)
-        }
-    }
-    val uri = resolver.insert(collection, values) ?: return@withContext null
-    try {
-        resolver.openOutputStream(uri)?.use { stream ->
-            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 95, stream)) {
-                throw IOException("Failed to save bitmap")
-            }
-        } ?: throw IOException("Unable to open output stream")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            values.clear()
-            values.put(MediaStore.Images.Media.IS_PENDING, 0)
-            resolver.update(uri, values, null, null)
-        }
-        uri
-    } catch (error: IOException) {
-        resolver.delete(uri, null, null)
-        null
-    }
-}
