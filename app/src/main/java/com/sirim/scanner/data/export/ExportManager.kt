@@ -298,7 +298,7 @@ class ExportManager(private val context: Context) {
         }
     }
 
-    private fun XSSFWorkbook.createFormValueStyle(): CellStyle = createCellStyle().apply {
+    private fun XSSFWorkbook.createFormValueStyle(): XSSFCellStyle = createCellStyle().apply {
         alignment = HorizontalAlignment.LEFT
         verticalAlignment = VerticalAlignment.CENTER
     }
@@ -317,13 +317,13 @@ class ExportManager(private val context: Context) {
         }
     }
 
-    private fun XSSFWorkbook.createTableBodyStyle(): CellStyle = createCellStyle().apply {
+    private fun XSSFWorkbook.createTableBodyStyle(): XSSFCellStyle = createCellStyle().apply {
         alignment = HorizontalAlignment.LEFT
         verticalAlignment = VerticalAlignment.TOP
         wrapText = true
     }
 
-    private fun XSSFWorkbook.createEmptyStateStyle(): CellStyle {
+    private fun XSSFWorkbook.createEmptyStateStyle(): XSSFCellStyle {
         val font = createFont().apply {
             italic = true
             color = IndexedColors.GREY_80_PERCENT.index
