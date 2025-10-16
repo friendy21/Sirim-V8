@@ -22,10 +22,7 @@
     <string name="qr_detected_payload_label">Detected Text</string>
     <string name="qr_detected_payload_caption">Confirm the SIRIM serial captured beneath the QR code.</string>
     <string name="qr_detection_waiting">Waiting for text…</string>
-    <string name="qr_optional_label">Optional Label</string>
-    <string name="qr_field_source_label">Field Source</string>
-    <string name="qr_field_note_label">Field Note</string>
-    <string name="qr_action_save">Save OCR Record</string>
+    <string name="qr_action_save">Save</string>
     <string name="qr_action_open_existing">Open Existing Record</string>
     <string name="qr_action_open_existing_secondary">Open the saved record</string>
     <string name="qr_action_saved">Saved</string>
@@ -40,10 +37,10 @@
     <string name="qr_controls_flash_on">Turn flash off</string>
     <string name="qr_controls_flash_off">Turn flash on</string>
     <string name="qr_controls_settings">Open settings</string>
-    <string name="qr_controls_save_frame">Save</string>
+    <string name="qr_controls_zoom_hide">Hide zoom controls</string>
+    <string name="qr_controls_zoom_value">Zoom: %1$d%%</string>
+    <string name="qr_zoom_ratio_label">Zoom ratio: %1$.1fx</string>
     <string name="qr_controls_retake">Retake</string>
-    <string name="qr_save_image_success">Scan saved to Pictures</string>
-    <string name="qr_save_image_failure">Unable to save scan</string>
     <string name="qr_reference_title">SIRIM Seal Reference</string>
     <string name="qr_reference_body">Match the coloured SIRIM seal and capture the serial ID printed directly beneath the QR code.</string>
     <string name="qr_reference_content_description">Reference illustration showing the SIRIM seal and serial placement</string>
