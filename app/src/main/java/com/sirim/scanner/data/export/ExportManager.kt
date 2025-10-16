@@ -220,28 +220,41 @@ class ExportManager(private val context: Context) {
         }
 
         val sortedSku = skuRecords.sortedBy { it.createdAt }
-        val sortedOcr = ocrRecords.sortedBy { it.capturedAt }
+        val assignedBySku: Map<Long, List<QrRecord>> = ocrRecords
+            .filter { it.skuRecordId != null }
+            .groupBy { it.skuRecordId!! }
+            .mapValues { (_, records) -> records.sortedBy { it.capturedAt } }
+
+        val legacyRecords = ocrRecords
+            .filter { it.skuRecordId == null }
+            .sortedBy { it.capturedAt }
 
         val sessions = mutableListOf<Pair<SkuRecord, List<QrRecord>>>()
         val unassigned = mutableListOf<QrRecord>()
+        val assignedConsumed = mutableSetOf<Long>()
 
-        var ocrIndex = 0
+        var legacyIndex = 0
 
         val firstSkuCreatedAt = sortedSku.first().createdAt
-        while (ocrIndex < sortedOcr.size && sortedOcr[ocrIndex].capturedAt < firstSkuCreatedAt) {
-            unassigned += sortedOcr[ocrIndex]
-            ocrIndex++
+        while (legacyIndex < legacyRecords.size && legacyRecords[legacyIndex].capturedAt < firstSkuCreatedAt) {
+            unassigned += legacyRecords[legacyIndex]
+            legacyIndex++
         }
 
         sortedSku.forEachIndexed { index, sku ->
             val nextCreatedAt = sortedSku.getOrNull(index + 1)?.createdAt
             val bucket = mutableListOf<QrRecord>()
 
-            while (ocrIndex < sortedOcr.size) {
-                val record = sortedOcr[ocrIndex]
+            assignedBySku[sku.id]?.let { assigned ->
+                bucket += assigned
+                assignedConsumed += sku.id
+            }
+
+            while (legacyIndex < legacyRecords.size) {
+                val record = legacyRecords[legacyIndex]
                 if (record.capturedAt < sku.createdAt) {
                     unassigned += record
-                    ocrIndex++
+                    legacyIndex++
                     continue
                 }
 
@@ -251,20 +264,25 @@ class ExportManager(private val context: Context) {
                 }
 
                 bucket += record
-                ocrIndex++
+                legacyIndex++
             }
 
-            sessions += sku to bucket
+            sessions += sku to bucket.sortedBy { it.capturedAt }
         }
 
-        while (ocrIndex < sortedOcr.size) {
-            unassigned += sortedOcr[ocrIndex]
-            ocrIndex++
+        while (legacyIndex < legacyRecords.size) {
+            unassigned += legacyRecords[legacyIndex]
+            legacyIndex++
         }
+
+        assignedBySku
+            .filterKeys { it !in assignedConsumed }
+            .values
+            .forEach { records -> unassigned += records }
 
         return SessionGrouping(
             sessions = sessions.sortedByDescending { it.first.createdAt },
-            unassigned = unassigned
+            unassigned = unassigned.sortedBy { it.capturedAt }
         )
     }
 

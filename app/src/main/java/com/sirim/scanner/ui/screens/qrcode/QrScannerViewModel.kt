@@ -5,8 +5,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.sirim.scanner.data.db.QrRecord
+import com.sirim.scanner.data.db.SkuExportRecord
+import com.sirim.scanner.data.db.SkuRecord
 import com.sirim.scanner.data.ocr.QrCodeAnalyzer
 import com.sirim.scanner.data.ocr.QrDetection
+import com.sirim.scanner.data.export.ExportManager
+import com.sirim.scanner.data.preferences.SkuSessionTracker
 import com.sirim.scanner.data.repository.SirimRepository
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
@@ -21,7 +25,9 @@ import kotlinx.coroutines.withContext
 
 class QrScannerViewModel private constructor(
     private val repository: SirimRepository,
-    private val analyzer: QrCodeAnalyzer
+    private val analyzer: QrCodeAnalyzer,
+    private val sessionTracker: SkuSessionTracker,
+    private val exportManager: ExportManager
 ) : ViewModel() {
 
     private val processing = AtomicBoolean(false)
@@ -38,7 +44,30 @@ class QrScannerViewModel private constructor(
     private val _status = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val status: SharedFlow<String> = _status.asSharedFlow()
 
+    private val _currentSku = MutableStateFlow<SkuRecord?>(null)
+    val currentSku: StateFlow<SkuRecord?> = _currentSku.asStateFlow()
+
     private var pendingConfirmationPayload: String? = null
+
+    init {
+        viewModelScope.launch {
+            sessionTracker.currentSkuIdFlow.collect { recordId ->
+                if (recordId != null) {
+                    if (_currentSku.value?.id == recordId) return@collect
+                    val record = withContext(Dispatchers.IO) { repository.getSkuRecord(recordId) }
+                    if (record != null) {
+                        _currentSku.value = record
+                    } else {
+                        _currentSku.value = null
+                        sessionTracker.setCurrentSku(null)
+                        _status.tryEmit("Last SKU session is no longer available. Capture a new SKU before scanning.")
+                    }
+                } else {
+                    _currentSku.value = null
+                }
+            }
+        }
+    }
 
     fun analyzeFrame(imageProxy: ImageProxy) {
         if (!processing.compareAndSet(false, true)) {
@@ -106,6 +135,11 @@ class QrScannerViewModel private constructor(
             _status.tryEmit("Scan text first")
             return
         }
+        val currentSku = _currentSku.value
+        if (currentSku == null) {
+            _status.tryEmit("Capture a SKU before saving SIRIM text")
+            return
+        }
         if (_captureState.value is QrCaptureState.Saving) return
         viewModelScope.launch(Dispatchers.IO) {
             _captureState.value = QrCaptureState.Saving
@@ -123,9 +157,11 @@ class QrScannerViewModel private constructor(
                 payload = detection.payload,
                 label = normalizedLabel,
                 fieldSource = normalizedSource,
-                fieldNote = normalizedNote
+                fieldNote = normalizedNote,
+                skuRecordId = currentSku.id
             )
             val id = repository.upsertQr(record)
+            refreshSkuWorkbook()
             _captureState.value = QrCaptureState.Saved("Text saved")
             _status.tryEmit("OCR record saved")
             withContext(Dispatchers.Main) { onSaved(id) }
@@ -139,16 +175,35 @@ class QrScannerViewModel private constructor(
         _scannerState.value = ScannerWorkflowState.Idle
     }
 
+    private suspend fun refreshSkuWorkbook() {
+        val skuRecords = repository.getAllSkuRecords()
+        val ocrRecords = repository.getAllQrRecords()
+        if (skuRecords.isEmpty() && ocrRecords.isEmpty()) return
+
+        val uri = exportManager.exportSkuToExcel(skuRecords, ocrRecords)
+        val fileName = uri.lastPathSegment ?: "sku_records.xlsx"
+        val totalCount = skuRecords.size + ocrRecords.size
+        val exportRecord = SkuExportRecord(
+            uri = uri.toString(),
+            fileName = fileName,
+            recordCount = totalCount,
+            updatedAt = System.currentTimeMillis()
+        )
+        repository.recordSkuExport(exportRecord)
+    }
+
     companion object {
         fun Factory(
             repository: SirimRepository,
-            analyzer: QrCodeAnalyzer
+            analyzer: QrCodeAnalyzer,
+            sessionTracker: SkuSessionTracker,
+            exportManager: ExportManager
         ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
                     require(modelClass.isAssignableFrom(QrScannerViewModel::class.java))
-                    return QrScannerViewModel(repository, analyzer) as T
+                    return QrScannerViewModel(repository, analyzer, sessionTracker, exportManager) as T
                 }
             }
         }

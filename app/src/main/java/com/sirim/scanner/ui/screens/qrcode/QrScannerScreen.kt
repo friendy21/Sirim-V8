@@ -57,6 +57,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Slider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -95,9 +96,14 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sirim.scanner.R
+import com.sirim.scanner.data.db.SkuRecord
+import com.sirim.scanner.data.export.ExportManager
 import com.sirim.scanner.data.ocr.QrCodeAnalyzer
 import com.sirim.scanner.data.ocr.QrDetection
+import com.sirim.scanner.data.preferences.SkuSessionTracker
 import com.sirim.scanner.data.repository.SirimRepository
+import java.text.DateFormat
+import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -112,18 +118,22 @@ fun QrScannerScreen(
     onBack: () -> Unit,
     onRecordSaved: (Long) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenSkuScanner: () -> Unit,
     repository: SirimRepository,
-    analyzer: QrCodeAnalyzer
+    analyzer: QrCodeAnalyzer,
+    sessionTracker: SkuSessionTracker,
+    exportManager: ExportManager
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
     val viewModel: QrScannerViewModel = viewModel(
-        factory = QrScannerViewModel.Factory(repository, analyzer)
+        factory = QrScannerViewModel.Factory(repository, analyzer, sessionTracker, exportManager)
     )
 
     val lastDetection by viewModel.lastDetection.collectAsStateWithLifecycle()
     val captureState by viewModel.captureState.collectAsStateWithLifecycle()
     val scannerState by viewModel.scannerState.collectAsStateWithLifecycle()
+    val currentSku by viewModel.currentSku.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     var brightnessSlider by rememberSaveable { mutableFloatStateOf(0f) }
@@ -319,6 +329,7 @@ fun QrScannerScreen(
                         state = scannerState,
                         captureState = captureState,
                         lastDetection = lastDetection,
+                        currentSku = currentSku,
                         showReference = showReferenceCard,
                         zoomState = currentZoomState,
                         zoomValue = zoomSlider,
@@ -335,6 +346,7 @@ fun QrScannerScreen(
                             }
                         },
                         onOpenSettings = onOpenSettings,
+                        onOpenSkuScanner = onOpenSkuScanner,
                         onRetake = {
                             previewController?.resumeAnalysis()
                             frozenBitmap = null
@@ -367,6 +379,7 @@ fun QrScannerScreen(
                         state = scannerState,
                         captureState = captureState,
                         lastDetection = lastDetection,
+                        currentSku = currentSku,
                         showReference = showReferenceCard,
                         zoomState = currentZoomState,
                         zoomValue = zoomSlider,
@@ -383,6 +396,7 @@ fun QrScannerScreen(
                             }
                         },
                         onOpenSettings = onOpenSettings,
+                        onOpenSkuScanner = onOpenSkuScanner,
                         onRetake = {
                             previewController?.resumeAnalysis()
                             frozenBitmap = null
@@ -444,11 +458,104 @@ private fun CameraTopBar(
 }
 
 @Composable
+private fun SkuSessionStatusCard(
+    modifier: Modifier = Modifier,
+    skuRecord: SkuRecord?,
+    onCaptureSku: () -> Unit
+) {
+    val createdText = remember(skuRecord?.createdAt) {
+        skuRecord?.createdAt?.let { timestamp ->
+            DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+                .format(Date(timestamp))
+        }
+    }
+
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            if (skuRecord == null) {
+                Text(
+                    text = stringResource(id = R.string.qr_session_missing_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = stringResource(id = R.string.qr_session_missing_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                FilledTonalButton(onClick = onCaptureSku) {
+                    Text(text = stringResource(id = R.string.qr_session_missing_action))
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = stringResource(id = R.string.qr_session_active_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = stringResource(
+                            id = R.string.qr_session_active_barcode,
+                            skuRecord.barcode
+                        ),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    skuRecord.brandTrademark?.takeIf { it.isNotBlank() }?.let { brand ->
+                        Text(
+                            text = stringResource(
+                                id = R.string.qr_session_active_brand,
+                                brand
+                            ),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    skuRecord.model?.takeIf { it.isNotBlank() }?.let { model ->
+                        Text(
+                            text = stringResource(
+                                id = R.string.qr_session_active_model,
+                                model
+                            ),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    createdText?.let { formatted ->
+                        Text(
+                            text = stringResource(
+                                id = R.string.qr_session_active_created,
+                                formatted
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                TextButton(onClick = onCaptureSku) {
+                    Text(text = stringResource(id = R.string.qr_session_change_action))
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ScannerControlPanel(
     modifier: Modifier = Modifier,
     state: ScannerWorkflowState,
     captureState: QrCaptureState,
     lastDetection: QrDetection?,
+    currentSku: SkuRecord?,
     showReference: Boolean,
     zoomState: ZoomState?,
     zoomValue: Float,
@@ -457,6 +564,7 @@ private fun ScannerControlPanel(
     flashEnabled: Boolean,
     onToggleFlash: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenSkuScanner: () -> Unit,
     onRetake: () -> Unit,
     onSave: () -> Unit
 ) {
@@ -464,6 +572,12 @@ private fun ScannerControlPanel(
         modifier = modifier.verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        SkuSessionStatusCard(
+            modifier = Modifier.fillMaxWidth(),
+            skuRecord = currentSku,
+            onCaptureSku = onOpenSkuScanner
+        )
+
         if (showReference) {
             SirimReferenceCard(modifier = Modifier.fillMaxWidth())
         }
@@ -484,10 +598,12 @@ private fun ScannerControlPanel(
             modifier = Modifier.fillMaxWidth(),
             state = state,
             captureState = captureState,
+            isSkuSessionActive = currentSku != null,
             isFlashOn = isFlashOn,
             flashEnabled = flashEnabled,
             onToggleFlash = onToggleFlash,
             onOpenSettings = onOpenSettings,
+            onOpenSkuScanner = onOpenSkuScanner,
             onRetake = onRetake,
             onSave = onSave
         )
@@ -616,10 +732,12 @@ private fun CameraActionButtons(
     modifier: Modifier = Modifier,
     state: ScannerWorkflowState,
     captureState: QrCaptureState,
+    isSkuSessionActive: Boolean,
     isFlashOn: Boolean,
     flashEnabled: Boolean,
     onToggleFlash: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenSkuScanner: () -> Unit,
     onRetake: () -> Unit,
     onSave: () -> Unit
 ) {
@@ -663,65 +781,83 @@ private fun CameraActionButtons(
             }
 
             is ScannerWorkflowState.Success -> {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp, vertical = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    FilledTonalButton(
-                        onClick = onRetake,
-                        modifier = Modifier.weight(1f)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Refresh,
-                            contentDescription = stringResource(id = R.string.qr_controls_retake)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = stringResource(id = R.string.qr_controls_retake))
-                    }
-
-                    Button(
-                        onClick = onSave,
-                        modifier = Modifier.weight(1f),
-                        enabled = captureState !is QrCaptureState.Saving
-                    ) {
-                        if (captureState is QrCaptureState.Saving) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp
-                            )
-                        } else {
+                        FilledTonalButton(
+                            onClick = onRetake,
+                            modifier = Modifier.weight(1f)
+                        ) {
                             Icon(
-                                imageVector = Icons.Rounded.Save,
-                                contentDescription = stringResource(id = R.string.qr_action_save)
+                                imageVector = Icons.Rounded.Refresh,
+                                contentDescription = stringResource(id = R.string.qr_controls_retake)
                             )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = stringResource(id = R.string.qr_controls_retake))
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = stringResource(id = R.string.qr_action_save))
+
+                        Button(
+                            onClick = onSave,
+                            modifier = Modifier.weight(1f),
+                            enabled = captureState !is QrCaptureState.Saving && isSkuSessionActive
+                        ) {
+                            if (captureState is QrCaptureState.Saving) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Rounded.Save,
+                                    contentDescription = stringResource(id = R.string.qr_action_save)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = stringResource(id = R.string.qr_action_save))
+                        }
+
+                        val flashIcon = if (isFlashOn) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff
+                        val flashDescription = if (isFlashOn) {
+                            R.string.qr_controls_flash_on
+                        } else {
+                            R.string.qr_controls_flash_off
+                        }
+                        CameraIconButton(
+                            icon = flashIcon,
+                            contentDescription = stringResource(id = flashDescription),
+                            onClick = onToggleFlash,
+                            enabled = flashEnabled,
+                            isActive = isFlashOn
+                        )
+
+                        CameraIconButton(
+                            icon = Icons.Rounded.Settings,
+                            contentDescription = stringResource(id = R.string.qr_controls_settings),
+                            onClick = onOpenSettings,
+                            enabled = true
+                        )
                     }
 
-                    val flashIcon = if (isFlashOn) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff
-                    val flashDescription = if (isFlashOn) {
-                        R.string.qr_controls_flash_on
-                    } else {
-                        R.string.qr_controls_flash_off
+                    if (!isSkuSessionActive) {
+                        Text(
+                            text = stringResource(id = R.string.qr_session_missing_save_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        FilledTonalButton(
+                            onClick = onOpenSkuScanner,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(text = stringResource(id = R.string.qr_session_missing_action))
+                        }
                     }
-                    CameraIconButton(
-                        icon = flashIcon,
-                        contentDescription = stringResource(id = flashDescription),
-                        onClick = onToggleFlash,
-                        enabled = flashEnabled,
-                        isActive = isFlashOn
-                    )
-
-                    CameraIconButton(
-                        icon = Icons.Rounded.Settings,
-                        contentDescription = stringResource(id = R.string.qr_controls_settings),
-                        onClick = onOpenSettings,
-                        enabled = true
-                    )
                 }
             }
         }

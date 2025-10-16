@@ -1,6 +1,7 @@
 package com.sirim.scanner
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,7 +14,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -35,7 +38,10 @@ import com.sirim.scanner.ui.screens.storage.StorageHubViewModel
 import com.sirim.scanner.ui.screens.startup.StartupScreen
 import com.sirim.scanner.ui.theme.SirimScannerTheme
 import com.sirim.scanner.ui.viewmodel.PreferencesViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
 
@@ -85,6 +91,9 @@ private fun NavGraph(container: AppContainer, navController: NavHostController) 
     val authError by preferencesViewModel.authError.collectAsState()
     var showAuthDialog by remember { mutableStateOf(false) }
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val sessionTracker = container.preferencesManager
 
     fun requestAuthentication(afterAuth: () -> Unit, forcePrompt: Boolean = false) {
         if (!forcePrompt && isSessionValid) {
@@ -111,23 +120,65 @@ private fun NavGraph(container: AppContainer, navController: NavHostController) 
             preferencesViewModel.checkSessionExpiry()
         }
     }
+    fun openQrScanner() {
+        coroutineScope.launch {
+            val currentSkuId = sessionTracker.getCurrentSkuId()
+            val hasActiveSku = currentSkuId?.let { id ->
+                withContext(Dispatchers.IO) { container.repository.getSkuRecord(id) != null }
+            } ?: false
+            if (hasActiveSku) {
+                navController.navigate(Destinations.QrScanner.route)
+            } else {
+                if (currentSkuId != null) {
+                    sessionTracker.setCurrentSku(null)
+                }
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.qr_session_missing_toast),
+                    Toast.LENGTH_LONG
+                ).show()
+                navController.navigate(Destinations.SkuScanner.route)
+            }
+        }
+    }
+
     NavHost(navController = navController, startDestination = Destinations.StartupResolver.route) {
         composable(Destinations.StartupResolver.route) {
             LaunchedEffect(preferences.startupPage) {
-                val target = when (preferences.startupPage) {
+                val preferredTarget = when (preferences.startupPage) {
                     StartupPage.AskEveryTime -> Destinations.Startup.route
                     StartupPage.SirimScannerV2 -> Destinations.QrScanner.route
                     StartupPage.SkuScanner -> Destinations.SkuScanner.route
                     StartupPage.Storage -> Destinations.Storage.route
                 }
-                navController.navigate(target) {
+                if (preferredTarget == Destinations.QrScanner.route) {
+                    val currentSkuId = sessionTracker.getCurrentSkuId()
+                    val hasActiveSku = currentSkuId?.let { id ->
+                        withContext(Dispatchers.IO) { container.repository.getSkuRecord(id) != null }
+                    } ?: false
+                    if (!hasActiveSku) {
+                        if (currentSkuId != null) {
+                            sessionTracker.setCurrentSku(null)
+                        }
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.qr_session_missing_toast),
+                            Toast.LENGTH_LONG
+                        ).show()
+                        navController.navigate(Destinations.SkuScanner.route) {
+                            popUpTo(Destinations.StartupResolver.route) { inclusive = true }
+                        }
+                        return@LaunchedEffect
+                    }
+                }
+                navController.navigate(preferredTarget) {
                     popUpTo(Destinations.StartupResolver.route) { inclusive = true }
                 }
             }
         }
         composable(Destinations.Startup.route) {
             StartupScreen(
-                onOpenQrScanner = { navController.navigate(Destinations.QrScanner.route) },
+                onOpenQrScanner = { openQrScanner() },
                 onOpenSkuScanner = { navController.navigate(Destinations.SkuScanner.route) },
                 onOpenStorage = { navController.navigate(Destinations.Storage.route) },
                 onOpenSettings = { navController.navigate(Destinations.Settings.route) }
@@ -142,8 +193,11 @@ private fun NavGraph(container: AppContainer, navController: NavHostController) 
                     }
                 },
                 onOpenSettings = { navController.navigate(Destinations.Settings.route) },
+                onOpenSkuScanner = { navController.navigate(Destinations.SkuScanner.route) },
                 repository = container.repository,
-                analyzer = container.qrAnalyzer
+                analyzer = container.qrAnalyzer,
+                sessionTracker = sessionTracker,
+                exportManager = container.exportManager
             )
         }
         composable(Destinations.SkuScanner.route) {
@@ -196,9 +250,7 @@ private fun NavGraph(container: AppContainer, navController: NavHostController) 
                     requestAuthentication(action, forcePrompt)
                 },
                 onBack = { navController.popBackStack() },
-                onOpenQrScanner = {
-                    navController.navigate(Destinations.QrScanner.route)
-                }
+                onOpenQrScanner = { openQrScanner() }
             )
         }
         composable(Destinations.Settings.route) {
