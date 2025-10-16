@@ -46,7 +46,7 @@ import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.ZoomIn
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledButton
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -642,14 +642,16 @@ private fun CameraActionButtons(
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     val flashIcon = if (isFlashOn) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff
-                    val flashDescription = if (isFlashOn) {
-                        R.string.qr_controls_flash_on
-                    } else {
-                        R.string.qr_controls_flash_off
-                    }
+                    val flashDescription = stringResource(
+                        id = if (isFlashOn) {
+                            R.string.qr_controls_flash_on
+                        } else {
+                            R.string.qr_controls_flash_off
+                        }
+                    )
                     CameraIconButton(
                         icon = flashIcon,
-                        contentDescription = stringResource(id = flashDescription),
+                        contentDescription = flashDescription,
                         onClick = onToggleFlash,
                         enabled = flashEnabled,
                         isActive = isFlashOn
@@ -673,7 +675,7 @@ private fun CameraActionButtons(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    FilledButton(
+                    Button(
                         onClick = onSave,
                         modifier = Modifier.weight(1f),
                         enabled = !isSaving
@@ -707,14 +709,16 @@ private fun CameraActionButtons(
                     }
 
                     val flashIcon = if (isFlashOn) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff
-                    val flashDescription = if (isFlashOn) {
-                        R.string.qr_controls_flash_on
-                    } else {
-                        R.string.qr_controls_flash_off
-                    }
+                    val flashDescription = stringResource(
+                        id = if (isFlashOn) {
+                            R.string.qr_controls_flash_on
+                        } else {
+                            R.string.qr_controls_flash_off
+                        }
+                    )
                     CameraIconButton(
                         icon = flashIcon,
-                        contentDescription = stringResource(id = flashDescription),
+                        contentDescription = flashDescription,
                         onClick = onToggleFlash,
                         enabled = flashEnabled && !isSaving,
                         isActive = isFlashOn
