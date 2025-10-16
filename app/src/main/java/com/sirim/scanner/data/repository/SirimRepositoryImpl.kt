@@ -45,7 +45,7 @@ class SirimRepositoryImpl(
             linkedRecords = linkedRecords,
             lastUpdated = lastUpdated
         )
-        storageItems += exports.map { StorageRecord.SkuExport(it) }
+        storageItems.addAll(exports.map { StorageRecord.SkuExport(it) })
         storageItems.sortByDescending { it.createdAt }
         storageItems
     }.onStart {
