@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.sirim.scanner.data.db.SirimDatabase
 import com.sirim.scanner.data.export.ExportManager
+import com.sirim.scanner.data.export.SkuExportRefresher
 import com.sirim.scanner.data.ocr.BarcodeAnalyzer
 import com.sirim.scanner.data.ocr.QrCodeAnalyzer
 import com.sirim.scanner.data.preferences.PreferencesManager
@@ -18,6 +19,7 @@ import kotlinx.coroutines.SupervisorJob
 interface AppContainer {
     val repository: SirimRepository
     val exportManager: ExportManager
+    val skuExportRefresher: SkuExportRefresher
     val qrAnalyzer: QrCodeAnalyzer
     val barcodeAnalyzer: BarcodeAnalyzer
     val applicationScope: CoroutineScope
@@ -57,6 +59,10 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
 
     override val exportManager: ExportManager by lazy {
         ExportManager(context.applicationContext)
+    }
+
+    override val skuExportRefresher: SkuExportRefresher by lazy {
+        SkuExportRefresher(repository, exportManager)
     }
 
     override val qrAnalyzer: QrCodeAnalyzer by lazy { QrCodeAnalyzer() }
