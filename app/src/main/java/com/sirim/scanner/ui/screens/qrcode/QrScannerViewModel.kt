@@ -6,7 +6,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.sirim.scanner.data.db.QrRecord
 import com.sirim.scanner.data.db.SkuRecord
-import com.sirim.scanner.data.ocr.QrCodeAnalyzer
+import com.sirim.scanner.data.export.SkuExportRefresher
+import com.sirim.scanner.data.ocr.QrAnalyzer
 import com.sirim.scanner.data.ocr.QrDetection
 import com.sirim.scanner.data.preferences.SkuSessionTracker
 import com.sirim.scanner.data.repository.SirimRepository
@@ -24,8 +25,9 @@ import kotlinx.coroutines.withContext
 
 class QrScannerViewModel private constructor(
     private val repository: SirimRepository,
-    private val analyzer: QrCodeAnalyzer,
-    private val sessionTracker: SkuSessionTracker
+    private val analyzer: QrAnalyzer,
+    private val sessionTracker: SkuSessionTracker,
+    private val exportRefresher: SkuExportRefresher
 ) : ViewModel() {
 
     private val processing = AtomicBoolean(false)
@@ -159,6 +161,7 @@ class QrScannerViewModel private constructor(
                 skuId = skuId
             )
             val id = repository.upsertQr(record)
+            runCatching { exportRefresher.refreshForSkuId(skuId) }
             _captureState.value = QrCaptureState.Saved("Text saved")
             _status.tryEmit("OCR record saved")
             withContext(Dispatchers.Main) { onSaved(id) }
@@ -175,14 +178,15 @@ class QrScannerViewModel private constructor(
     companion object {
         fun Factory(
             repository: SirimRepository,
-            analyzer: QrCodeAnalyzer,
-            sessionTracker: SkuSessionTracker
+            analyzer: QrAnalyzer,
+            sessionTracker: SkuSessionTracker,
+            exportRefresher: SkuExportRefresher
         ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
                     require(modelClass.isAssignableFrom(QrScannerViewModel::class.java))
-                    return QrScannerViewModel(repository, analyzer, sessionTracker) as T
+                    return QrScannerViewModel(repository, analyzer, sessionTracker, exportRefresher) as T
                 }
             }
         }

@@ -203,7 +203,8 @@ private fun NavGraph(container: AppContainer, navController: NavHostController) 
                 onOpenSettings = { navController.navigate(Destinations.Settings.route) },
                 repository = container.repository,
                 analyzer = container.qrAnalyzer,
-                sessionTracker = container.preferencesManager
+                sessionTracker = container.preferencesManager,
+                exportRefresher = container.skuExportRefresher
             )
         }
         composable(Destinations.SkuScanner.route) {

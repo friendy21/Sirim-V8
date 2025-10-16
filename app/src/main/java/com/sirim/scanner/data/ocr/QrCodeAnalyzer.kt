@@ -11,12 +11,16 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlinx.coroutines.tasks.await
 
-class QrCodeAnalyzer {
+interface QrAnalyzer {
+    suspend fun analyze(imageProxy: ImageProxy): QrDetection?
+}
+
+class QrCodeAnalyzer : QrAnalyzer {
     private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     private val serialPattern = Regex("^[A-Z0-9]{6,}$")
     private val referenceKeywords = listOf("SIRIM", "SIRIM QAS", "CERTIFIED")
 
-    suspend fun analyze(imageProxy: ImageProxy): QrDetection? {
+    override suspend fun analyze(imageProxy: ImageProxy): QrDetection? {
         val mediaImage = imageProxy.image ?: return null
         val inputImage = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
         val result = runCatching { textRecognizer.process(inputImage).await() }.getOrNull()
