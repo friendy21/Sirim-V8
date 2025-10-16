@@ -42,8 +42,11 @@ import androidx.compose.material.icons.rounded.Brightness6
 import androidx.compose.material.icons.rounded.FlashOff
 import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.ZoomIn
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -119,6 +122,7 @@ fun QrScannerScreen(
     )
 
     val lastDetection by viewModel.lastDetection.collectAsStateWithLifecycle()
+    val captureState by viewModel.captureState.collectAsStateWithLifecycle()
     val scannerState by viewModel.scannerState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -202,6 +206,16 @@ fun QrScannerScreen(
 
             is ScannerWorkflowState.Detecting -> Unit
         }
+    }
+
+    val onSaveRecord: () -> Unit = {
+        viewModel.saveRecord(
+            label = null,
+            fieldSource = null,
+            fieldNote = null,
+            onSaved = onRecordSaved,
+            onDuplicate = onRecordSaved
+        )
     }
 
     val previewContent: @Composable (Modifier) -> Unit = { containerModifier ->
@@ -313,6 +327,7 @@ fun QrScannerScreen(
                             .widthIn(min = this@BoxWithConstraints.maxWidth * 0.32f, max = this@BoxWithConstraints.maxWidth * 0.45f)
                             .padding(16.dp),
                         state = scannerState,
+                        captureState = captureState,
                         lastDetection = lastDetection,
                         showReference = showReferenceCard,
                         zoomState = currentZoomState,
@@ -330,6 +345,7 @@ fun QrScannerScreen(
                             }
                         },
                         onOpenSettings = onOpenSettings,
+                        onSave = onSaveRecord,
                         onRetake = {
                             previewController?.resumeAnalysis()
                             frozenBitmap = null
@@ -351,6 +367,7 @@ fun QrScannerScreen(
                             .fillMaxWidth()
                             .padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 40.dp),
                         state = scannerState,
+                        captureState = captureState,
                         lastDetection = lastDetection,
                         showReference = showReferenceCard,
                         zoomState = currentZoomState,
@@ -368,6 +385,7 @@ fun QrScannerScreen(
                             }
                         },
                         onOpenSettings = onOpenSettings,
+                        onSave = onSaveRecord,
                         onRetake = {
                             previewController?.resumeAnalysis()
                             frozenBitmap = null
@@ -423,6 +441,7 @@ private fun CameraTopBar(
 private fun ScannerControlPanel(
     modifier: Modifier = Modifier,
     state: ScannerWorkflowState,
+    captureState: QrCaptureState,
     lastDetection: QrDetection?,
     showReference: Boolean,
     zoomState: ZoomState?,
@@ -432,6 +451,7 @@ private fun ScannerControlPanel(
     flashEnabled: Boolean,
     onToggleFlash: () -> Unit,
     onOpenSettings: () -> Unit,
+    onSave: () -> Unit,
     onRetake: () -> Unit
 ) {
     Column(
@@ -457,10 +477,12 @@ private fun ScannerControlPanel(
         CameraActionButtons(
             modifier = Modifier.fillMaxWidth(),
             state = state,
+            captureState = captureState,
             isFlashOn = isFlashOn,
             flashEnabled = flashEnabled,
             onToggleFlash = onToggleFlash,
             onOpenSettings = onOpenSettings,
+            onSave = onSave,
             onRetake = onRetake
         )
     }
@@ -587,10 +609,12 @@ private fun ZoomSliderCard(
 private fun CameraActionButtons(
     modifier: Modifier = Modifier,
     state: ScannerWorkflowState,
+    captureState: QrCaptureState,
     isFlashOn: Boolean,
     flashEnabled: Boolean,
     onToggleFlash: () -> Unit,
     onOpenSettings: () -> Unit,
+    onSave: () -> Unit,
     onRetake: () -> Unit
 ) {
     Surface(
@@ -633,6 +657,8 @@ private fun CameraActionButtons(
             }
 
             is ScannerWorkflowState.Success -> {
+                val isSaving = captureState is QrCaptureState.Saving
+                val canSave = captureState is QrCaptureState.Ready
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -640,9 +666,31 @@ private fun CameraActionButtons(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    Button(
+                        onClick = onSave,
+                        modifier = Modifier.weight(1f),
+                        enabled = canSave
+                    ) {
+                        if (isSaving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        } else {
+                            Icon(
+                                imageVector = Icons.Rounded.Save,
+                                contentDescription = stringResource(id = R.string.qr_controls_save)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text(text = stringResource(id = R.string.qr_controls_save))
+                    }
+
                     FilledTonalButton(
                         onClick = onRetake,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        enabled = !isSaving
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.Refresh,
@@ -662,7 +710,7 @@ private fun CameraActionButtons(
                         icon = flashIcon,
                         contentDescription = stringResource(id = flashDescription),
                         onClick = onToggleFlash,
-                        enabled = flashEnabled,
+                        enabled = flashEnabled && !isSaving,
                         isActive = isFlashOn
                     )
 
@@ -670,7 +718,7 @@ private fun CameraActionButtons(
                         icon = Icons.Rounded.Settings,
                         contentDescription = stringResource(id = R.string.qr_controls_settings),
                         onClick = onOpenSettings,
-                        enabled = true
+                        enabled = !isSaving
                     )
                 }
             }
