@@ -24,15 +24,30 @@ class ExportManager(private val context: Context) {
         XSSFWorkbook().use { workbook ->
             val skuSheet = workbook.createSheet("SKU Records")
             skuSheet.setColumnWidth(0, 20 * 256)
-            skuSheet.setColumnWidth(1, 30 * 256)
+            skuSheet.setColumnWidth(1, 20 * 256)
             skuSheet.setColumnWidth(2, 30 * 256)
-            skuSheet.setColumnWidth(3, 20 * 256)
+            skuSheet.setColumnWidth(3, 30 * 256)
             skuSheet.setColumnWidth(4, 20 * 256)
             skuSheet.setColumnWidth(5, 20 * 256)
+            skuSheet.setColumnWidth(6, 20 * 256)
+            skuSheet.setColumnWidth(7, 25 * 256)
+            skuSheet.setColumnWidth(8, 18 * 256)
+            skuSheet.setColumnWidth(9, 20 * 256)
 
             val headerStyle = workbook.createHeaderStyle()
             val headerRow = skuSheet.createRow(0)
-            listOf("Barcode", "Brand/Trademark", "Model", "Type", "Rating", "Created")
+            listOf(
+                "Barcode",
+                "Batch No.",
+                "Brand/Trademark",
+                "Model",
+                "Type",
+                "Rating",
+                "Size",
+                "Linked Serial",
+                "Verified",
+                "Created"
+            )
                 .forEachIndexed { index, title ->
                     val cell = headerRow.createCell(index)
                     cell.setCellValue(title)
@@ -43,15 +58,19 @@ class ExportManager(private val context: Context) {
             skuRecords.forEachIndexed { index, record ->
                 val row = skuSheet.createRow(index + 1)
                 row.createCell(0).setCellValue(record.barcode)
-                row.createCell(1).setCellValue(record.brandTrademark.orEmpty())
-                row.createCell(2).setCellValue(record.model.orEmpty())
-                row.createCell(3).setCellValue(record.type.orEmpty())
-                row.createCell(4).setCellValue(record.rating.orEmpty())
-                row.createCell(5).setCellValue(record.createdAt.toReadableDate())
+                row.createCell(1).setCellValue(record.batchNo.orEmpty())
+                row.createCell(2).setCellValue(record.brandTrademark.orEmpty())
+                row.createCell(3).setCellValue(record.model.orEmpty())
+                row.createCell(4).setCellValue(record.type.orEmpty())
+                row.createCell(5).setCellValue(record.rating.orEmpty())
+                row.createCell(6).setCellValue(record.size.orEmpty())
+                row.createCell(7).setCellValue(record.linkedSerial.orEmpty())
+                row.createCell(8).setCellValue(if (record.isVerified) "Verified" else "Pending")
+                row.createCell(9).setCellValue(record.createdAt.toReadableDate())
                 row.forEach { cell -> cell.cellStyle = bodyStyle }
             }
 
-            val ocrSheet = workbook.createSheet("SIRIM OCR")
+            val ocrSheet = workbook.createSheet("SIRIM Scanner 2.0")
             ocrSheet.setColumnWidth(0, 60 * 256)
             ocrSheet.setColumnWidth(1, 25 * 256)
             ocrSheet.setColumnWidth(2, 25 * 256)
