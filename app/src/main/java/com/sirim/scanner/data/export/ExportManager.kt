@@ -13,83 +13,38 @@ import java.util.Locale
 import org.apache.poi.ss.usermodel.CellStyle
 import org.apache.poi.ss.usermodel.FillPatternType
 import org.apache.poi.ss.usermodel.HorizontalAlignment
+import org.apache.poi.ss.usermodel.Row
 import org.apache.poi.xssf.usermodel.XSSFCellStyle
 import org.apache.poi.xssf.usermodel.XSSFFont
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 
 class ExportManager(private val context: Context) {
 
-    fun exportSkuToExcel(skuRecords: List<SkuRecord>, ocrRecords: List<QrRecord>): Uri {
-        val file = createSkuExportFile()
-        XSSFWorkbook().use { workbook ->
-            val skuSheet = workbook.createSheet("SKU Records")
-            skuSheet.setColumnWidth(0, 20 * 256)
-            skuSheet.setColumnWidth(1, 30 * 256)
-            skuSheet.setColumnWidth(2, 30 * 256)
-            skuSheet.setColumnWidth(3, 20 * 256)
-            skuSheet.setColumnWidth(4, 20 * 256)
-            skuSheet.setColumnWidth(5, 20 * 256)
-
-            val headerStyle = workbook.createHeaderStyle()
-            val headerRow = skuSheet.createRow(0)
-            listOf("Barcode", "Brand/Trademark", "Model", "Type", "Rating", "Created")
-                .forEachIndexed { index, title ->
-                    val cell = headerRow.createCell(index)
-                    cell.setCellValue(title)
-                    cell.cellStyle = headerStyle
-                }
-
-            val bodyStyle = workbook.createBodyStyle()
-            skuRecords.forEachIndexed { index, record ->
-                val row = skuSheet.createRow(index + 1)
-                row.createCell(0).setCellValue(record.barcode)
-                row.createCell(1).setCellValue(record.brandTrademark.orEmpty())
-                row.createCell(2).setCellValue(record.model.orEmpty())
-                row.createCell(3).setCellValue(record.type.orEmpty())
-                row.createCell(4).setCellValue(record.rating.orEmpty())
-                row.createCell(5).setCellValue(record.createdAt.toReadableDate())
-                row.forEach { cell -> cell.cellStyle = bodyStyle }
-            }
-
-            val ocrSheet = workbook.createSheet("SIRIM OCR")
-            ocrSheet.setColumnWidth(0, 60 * 256)
-            ocrSheet.setColumnWidth(1, 25 * 256)
-            ocrSheet.setColumnWidth(2, 25 * 256)
-            ocrSheet.setColumnWidth(3, 25 * 256)
-            ocrSheet.setColumnWidth(4, 20 * 256)
-
-            val ocrHeader = ocrSheet.createRow(0)
-            listOf("Captured Text", "Label", "Field Source", "Field Note", "Captured")
-                .forEachIndexed { index, title ->
-                    val cell = ocrHeader.createCell(index)
-                    cell.setCellValue(title)
-                    cell.cellStyle = headerStyle
-                }
-
-            ocrRecords.forEachIndexed { index, record ->
-                val row = ocrSheet.createRow(index + 1)
-                row.createCell(0).setCellValue(record.payload)
-                row.createCell(1).setCellValue(record.label.orEmpty())
-                row.createCell(2).setCellValue(record.fieldSource.orEmpty())
-                row.createCell(3).setCellValue(record.fieldNote.orEmpty())
-                row.createCell(4).setCellValue(record.capturedAt.toReadableDate())
-                row.forEach { cell -> cell.cellStyle = bodyStyle }
-            }
-
+    fun exportSkuToExcel(skuRecord: SkuRecord, ocrRecords: List<QrRecord>): SkuExportResult {
+        val file = createSkuExportFile(skuRecord.barcode)
+        val metadata = XSSFWorkbook().use { workbook ->
+            val exportMeta = SkuWorkbookWriter.populate(workbook, skuRecord, ocrRecords)
             FileOutputStream(file).use { output ->
                 workbook.write(output)
             }
+            exportMeta
         }
-        return FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+        return SkuExportResult(
+            uri = uri,
+            fileName = file.name,
+            fieldCount = metadata.fieldCount,
+            ocrCount = metadata.ocrCount
+        )
     }
 
-    private fun createSkuExportFile(): File {
+    private fun createSkuExportFile(barcode: String): File {
         val directory = getSkuExportDirectory()
         if (!directory.exists()) {
             directory.mkdirs()
         }
-        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val fileName = "sku_export_$timestamp.xlsx"
+        val sanitizedBarcode = barcode.trim().ifBlank { "unknown" }.sanitizeForFilename()
+        val fileName = "sku_${sanitizedBarcode}.xlsx"
         return File(directory, fileName)
     }
 
@@ -115,5 +70,122 @@ class ExportManager(private val context: Context) {
 
     private fun XSSFWorkbook.createBodyStyle(): CellStyle = createCellStyle().apply {
         alignment = HorizontalAlignment.LEFT
+    }
+
+    private fun Row.applyStyle(style: CellStyle) {
+        for (cell in this) {
+            cell.cellStyle = style
+        }
+    }
+
+    private fun String.sanitizeForFilename(): String {
+        if (isEmpty()) return "unknown"
+        val sanitized = replace(Regex("[^A-Za-z0-9_-]"), "_")
+        return sanitized.ifEmpty { "unknown" }
+    }
+
+    data class SkuExportResult(
+        val uri: Uri,
+        val fileName: String,
+        val fieldCount: Int,
+        val ocrCount: Int
+    )
+
+    internal data class SkuWorkbookMetadata(
+        val fieldCount: Int,
+        val ocrCount: Int,
+        val spacerRowIndex: Int,
+        val ocrHeaderRowIndex: Int
+    )
+
+    internal object SkuWorkbookWriter {
+        internal val formHeaderTitles = listOf("Field", "Value")
+
+        private data class FormField(
+            val label: String,
+            val valueProvider: (SkuRecord) -> String
+        )
+
+        private val formFields = listOf(
+            FormField("Barcode") { it.barcode },
+            FormField("Batch Number") { it.batchNo.orEmpty() },
+            FormField("Brand/Trademark") { it.brandTrademark.orEmpty() },
+            FormField("Model") { it.model.orEmpty() },
+            FormField("Type") { it.type.orEmpty() },
+            FormField("Rating") { it.rating.orEmpty() },
+            FormField("Size") { it.size.orEmpty() },
+            FormField("Linked Serial") { it.linkedSerial.orEmpty() },
+            FormField("Created") { it.createdAt.toReadableDate() }
+        )
+
+        internal val formFieldLabels: List<String> = formFields.map(FormField::label)
+
+        internal val ocrHeaderTitles = listOf(
+            "Captured Text",
+            "Label",
+            "Field Source",
+            "Field Note",
+            "Captured"
+        )
+
+        fun populate(
+            workbook: XSSFWorkbook,
+            skuRecord: SkuRecord,
+            ocrRecords: List<QrRecord>
+        ): SkuWorkbookMetadata {
+            val sheet = workbook.createSheet("SKU")
+            sheet.setColumnWidth(0, 24 * 256)
+            sheet.setColumnWidth(1, 40 * 256)
+            sheet.setColumnWidth(2, 60 * 256)
+            sheet.setColumnWidth(3, 30 * 256)
+            sheet.setColumnWidth(4, 25 * 256)
+
+            val headerStyle = workbook.createHeaderStyle()
+            val bodyStyle = workbook.createBodyStyle()
+
+            var rowIndex = 0
+
+            val formHeaderRow = sheet.createRow(rowIndex++)
+            formHeaderTitles.forEachIndexed { index, title ->
+                val cell = formHeaderRow.createCell(index)
+                cell.setCellValue(title)
+            }
+            formHeaderRow.applyStyle(headerStyle)
+
+            formFields.forEach { field ->
+                val row = sheet.createRow(rowIndex++)
+                row.createCell(0).setCellValue(field.label)
+                row.createCell(1).setCellValue(field.valueProvider(skuRecord))
+                row.applyStyle(bodyStyle)
+            }
+
+            val spacerRowIndex = rowIndex
+            sheet.createRow(rowIndex++)
+
+            val ocrHeaderRowIndex = rowIndex
+            val ocrHeaderRow = sheet.createRow(rowIndex++)
+            ocrHeaderTitles.forEachIndexed { index, title ->
+                val cell = ocrHeaderRow.createCell(index)
+                cell.setCellValue(title)
+            }
+            ocrHeaderRow.applyStyle(headerStyle)
+
+            ocrRecords.forEach { record ->
+                val row = sheet.createRow(rowIndex++)
+                row.createCell(0).setCellValue(record.payload)
+                row.createCell(1).setCellValue(record.label.orEmpty())
+                row.createCell(2).setCellValue(record.fieldSource.orEmpty())
+                row.createCell(3).setCellValue(record.fieldNote.orEmpty())
+                row.createCell(4).setCellValue(record.capturedAt.toReadableDate())
+                row.applyStyle(bodyStyle)
+            }
+
+            return SkuWorkbookMetadata(
+                fieldCount = formFields.size,
+                ocrCount = ocrRecords.size,
+                spacerRowIndex = spacerRowIndex,
+                ocrHeaderRowIndex = ocrHeaderRowIndex
+            )
+        }
     }
 }
