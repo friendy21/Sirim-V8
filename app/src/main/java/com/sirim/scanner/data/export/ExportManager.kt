@@ -62,13 +62,13 @@ class ExportManager(private val context: Context) {
                 val emptyRow = sessionSheet.createRow(rowIndex++)
                 emptyRow.createCell(0).apply {
                     setCellValue("No SKU sessions available")
-                    cellStyle = emptyStateStyle
+                    cellStyle = emptyStateStyle as XSSFCellStyle
                 }
                 if (ocrRecords.isNotEmpty()) {
                     val detailRow = sessionSheet.createRow(rowIndex++)
                     detailRow.createCell(0).apply {
                         setCellValue("SIRIM scans saved: ${ocrRecords.size}")
-                        cellStyle = emptyStateStyle
+                        cellStyle = emptyStateStyle as XSSFCellStyle
                     }
                 }
             } else {
@@ -81,7 +81,7 @@ class ExportManager(private val context: Context) {
                     formHeaders.forEachIndexed { columnIndex, title ->
                         formHeaderRow.createCell(columnIndex).apply {
                             setCellValue(title)
-                            cellStyle = formHeaderStyle
+                            cellStyle = formHeaderStyle as XSSFCellStyle
                         }
                     }
 
@@ -97,7 +97,7 @@ class ExportManager(private val context: Context) {
                     ).forEachIndexed { columnIndex, value ->
                         formValueRow.createCell(columnIndex).apply {
                             setCellValue(value)
-                            cellStyle = formValueStyle
+                            cellStyle = formValueStyle as XSSFCellStyle
                         }
                     }
 
@@ -107,7 +107,7 @@ class ExportManager(private val context: Context) {
                     sirimHeaders.forEachIndexed { columnIndex, title ->
                         sirimHeaderRow.createCell(columnIndex).apply {
                             setCellValue(title)
-                            cellStyle = tableHeaderStyle
+                            cellStyle = tableHeaderStyle as XSSFCellStyle
                         }
                     }
 
@@ -115,38 +115,45 @@ class ExportManager(private val context: Context) {
                         val noRecordsRow = sessionSheet.createRow(rowIndex++)
                         noRecordsRow.createCell(0).apply {
                             setCellValue("No SIRIM scans captured for this SKU")
-                            cellStyle = emptyStateStyle
+                            cellStyle = emptyStateStyle as XSSFCellStyle
                         }
                     } else {
                         sirimRecords.forEachIndexed { recordIndex, record ->
                             val row = sessionSheet.createRow(rowIndex++)
                             row.createCell(0).apply {
                                 setCellValue((recordIndex + 1).toDouble())
-                                cellStyle = tableBodyStyle
+                                // Cast the style to XSSFCellStyle
+                                cellStyle = tableBodyStyle as XSSFCellStyle
                             }
                             row.createCell(1).apply {
                                 setCellValue(record.payload)
-                                cellStyle = tableBodyStyle
+                                // Cast the style to XSSFCellStyle
+                                cellStyle = tableBodyStyle as XSSFCellStyle
                             }
                             row.createCell(2).apply {
                                 setCellValue(record.label.orEmpty())
-                                cellStyle = tableBodyStyle
+                                // Cast the style to XSSFCellStyle
+                                cellStyle = tableBodyStyle as XSSFCellStyle
                             }
                             row.createCell(3).apply {
                                 setCellValue(record.fieldSource.orEmpty())
-                                cellStyle = tableBodyStyle
+                                // Cast the style to XSSFCellStyle
+                                cellStyle = tableBodyStyle as XSSFCellStyle
                             }
                             row.createCell(4).apply {
                                 setCellValue(record.fieldNote.orEmpty())
-                                cellStyle = tableBodyStyle
+                                // Cast the style to XSSFCellStyle
+                                cellStyle = tableBodyStyle as XSSFCellStyle
                             }
                             row.createCell(5).apply {
                                 setCellValue(record.capturedAt.toReadableDate())
-                                cellStyle = tableBodyStyle
+                                // Cast the style to XSSFCellStyle
+                                cellStyle = tableBodyStyle as XSSFCellStyle
                             }
                             row.createCell(6).apply {
                                 setCellValue("None")
-                                cellStyle = tableBodyStyle
+                                // Cast the style to XSSFCellStyle
+                                cellStyle = tableBodyStyle as XSSFCellStyle
                             }
                         }
                     }
@@ -160,14 +167,14 @@ class ExportManager(private val context: Context) {
                 val titleRow = sessionSheet.createRow(rowIndex++)
                 titleRow.createCell(0).apply {
                     setCellValue("Unassigned SIRIM scans (no preceding SKU)")
-                    cellStyle = formHeaderStyle
+                    cellStyle = formHeaderStyle as XSSFCellStyle
                 }
 
                 val headerRow = sessionSheet.createRow(rowIndex++)
                 sirimHeaders.forEachIndexed { columnIndex, title ->
                     headerRow.createCell(columnIndex).apply {
                         setCellValue(title)
-                        cellStyle = tableHeaderStyle
+                        cellStyle = tableHeaderStyle as XSSFCellStyle
                     }
                 }
 
@@ -175,31 +182,36 @@ class ExportManager(private val context: Context) {
                     val row = sessionSheet.createRow(rowIndex++)
                     row.createCell(0).apply {
                         setCellValue((recordIndex + 1).toDouble())
-                        cellStyle = tableBodyStyle
+                        cellStyle = tableBodyStyle as XSSFCellStyle
                     }
                     row.createCell(1).apply {
                         setCellValue(record.payload)
-                        cellStyle = tableBodyStyle
+                        cellStyle = tableBodyStyle as XSSFCellStyle
                     }
                     row.createCell(2).apply {
                         setCellValue(record.label.orEmpty())
-                        cellStyle = tableBodyStyle
+                        // Cast the style to XSSFCellStyle
+                        cellStyle = tableBodyStyle as XSSFCellStyle
                     }
                     row.createCell(3).apply {
                         setCellValue(record.fieldSource.orEmpty())
-                        cellStyle = tableBodyStyle
+                        // Cast the style to XSSFCellStyle
+                        cellStyle = tableBodyStyle as XSSFCellStyle
                     }
                     row.createCell(4).apply {
                         setCellValue(record.fieldNote.orEmpty())
-                        cellStyle = tableBodyStyle
+                        // Cast the style to XSSFCellStyle
+                        cellStyle = tableBodyStyle as XSSFCellStyle
                     }
                     row.createCell(5).apply {
                         setCellValue(record.capturedAt.toReadableDate())
-                        cellStyle = tableBodyStyle
+                        // Cast the style to XSSFCellStyle
+                        cellStyle = tableBodyStyle as XSSFCellStyle
                     }
                     row.createCell(6).apply {
                         setCellValue("None")
-                        cellStyle = tableBodyStyle
+                        // Cast the style to XSSFCellStyle
+                        cellStyle = tableBodyStyle as XSSFCellStyle
                     }
                 }
             }
@@ -220,41 +232,28 @@ class ExportManager(private val context: Context) {
         }
 
         val sortedSku = skuRecords.sortedBy { it.createdAt }
-        val assignedBySku: Map<Long, List<QrRecord>> = ocrRecords
-            .filter { it.skuRecordId != null }
-            .groupBy { it.skuRecordId!! }
-            .mapValues { (_, records) -> records.sortedBy { it.capturedAt } }
-
-        val legacyRecords = ocrRecords
-            .filter { it.skuRecordId == null }
-            .sortedBy { it.capturedAt }
+        val sortedOcr = ocrRecords.sortedBy { it.capturedAt }
 
         val sessions = mutableListOf<Pair<SkuRecord, List<QrRecord>>>()
         val unassigned = mutableListOf<QrRecord>()
-        val assignedConsumed = mutableSetOf<Long>()
 
-        var legacyIndex = 0
+        var ocrIndex = 0
 
         val firstSkuCreatedAt = sortedSku.first().createdAt
-        while (legacyIndex < legacyRecords.size && legacyRecords[legacyIndex].capturedAt < firstSkuCreatedAt) {
-            unassigned += legacyRecords[legacyIndex]
-            legacyIndex++
+        while (ocrIndex < sortedOcr.size && sortedOcr[ocrIndex].capturedAt < firstSkuCreatedAt) {
+            unassigned += sortedOcr[ocrIndex]
+            ocrIndex++
         }
 
         sortedSku.forEachIndexed { index, sku ->
             val nextCreatedAt = sortedSku.getOrNull(index + 1)?.createdAt
             val bucket = mutableListOf<QrRecord>()
 
-            assignedBySku[sku.id]?.let { assigned ->
-                bucket += assigned
-                assignedConsumed += sku.id
-            }
-
-            while (legacyIndex < legacyRecords.size) {
-                val record = legacyRecords[legacyIndex]
+            while (ocrIndex < sortedOcr.size) {
+                val record = sortedOcr[ocrIndex]
                 if (record.capturedAt < sku.createdAt) {
                     unassigned += record
-                    legacyIndex++
+                    ocrIndex++
                     continue
                 }
 
@@ -264,25 +263,20 @@ class ExportManager(private val context: Context) {
                 }
 
                 bucket += record
-                legacyIndex++
+                ocrIndex++
             }
 
-            sessions += sku to bucket.sortedBy { it.capturedAt }
+            sessions += sku to bucket
         }
 
-        while (legacyIndex < legacyRecords.size) {
-            unassigned += legacyRecords[legacyIndex]
-            legacyIndex++
+        while (ocrIndex < sortedOcr.size) {
+            unassigned += sortedOcr[ocrIndex]
+            ocrIndex++
         }
-
-        assignedBySku
-            .filterKeys { it !in assignedConsumed }
-            .values
-            .forEach { records -> unassigned += records }
 
         return SessionGrouping(
             sessions = sessions.sortedByDescending { it.first.createdAt },
-            unassigned = unassigned.sortedBy { it.capturedAt }
+            unassigned = unassigned
         )
     }
 
@@ -316,7 +310,7 @@ class ExportManager(private val context: Context) {
         }
     }
 
-    private fun XSSFWorkbook.createFormValueStyle(): XSSFCellStyle = createCellStyle().apply {
+    private fun XSSFWorkbook.createFormValueStyle(): CellStyle = createCellStyle().apply {
         alignment = HorizontalAlignment.LEFT
         verticalAlignment = VerticalAlignment.CENTER
     }
@@ -335,13 +329,13 @@ class ExportManager(private val context: Context) {
         }
     }
 
-    private fun XSSFWorkbook.createTableBodyStyle(): XSSFCellStyle = createCellStyle().apply {
+    private fun XSSFWorkbook.createTableBodyStyle(): CellStyle = createCellStyle().apply {
         alignment = HorizontalAlignment.LEFT
         verticalAlignment = VerticalAlignment.TOP
         wrapText = true
     }
 
-    private fun XSSFWorkbook.createEmptyStateStyle(): XSSFCellStyle {
+    private fun XSSFWorkbook.createEmptyStateStyle(): CellStyle {
         val font = createFont().apply {
             italic = true
             color = IndexedColors.GREY_80_PERCENT.index

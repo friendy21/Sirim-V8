@@ -43,15 +43,4 @@
     <string name="qr_reference_title">SIRIM Seal Reference</string>
     <string name="qr_reference_body">Match the coloured SIRIM seal and capture the serial ID printed directly beneath the QR code.</string>
     <string name="qr_reference_content_description">Reference illustration showing the SIRIM seal and serial placement</string>
-    <string name="qr_session_missing_title">No active SKU session</string>
-    <string name="qr_session_missing_body">Scan a SKU barcode before saving SIRIM text captures.</string>
-    <string name="qr_session_missing_action">Capture SKU</string>
-    <string name="qr_session_active_title">Active SKU session</string>
-    <string name="qr_session_active_barcode">Barcode: %1$s</string>
-    <string name="qr_session_active_brand">Brand: %1$s</string>
-    <string name="qr_session_active_model">Model: %1$s</string>
-    <string name="qr_session_active_created">Captured: %1$s</string>
-    <string name="qr_session_change_action">Switch SKU</string>
-    <string name="qr_session_missing_save_hint">Capture a SKU before saving SIRIM text.</string>
-    <string name="qr_session_missing_toast">Capture a SKU barcode before scanning SIRIM text.</string>
 </resources>

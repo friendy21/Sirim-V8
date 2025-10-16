@@ -7,7 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [QrRecord::class, SkuRecord::class, SkuExportRecord::class],
-    version = 12,
+    version = 11,
     exportSchema = true
 )
 abstract class SirimDatabase : RoomDatabase() {
@@ -127,15 +127,6 @@ abstract class SirimDatabase : RoomDatabase() {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE qr_records ADD COLUMN field_source TEXT")
                 database.execSQL("ALTER TABLE qr_records ADD COLUMN field_note TEXT")
-            }
-        }
-
-        val MIGRATION_11_12: Migration = object : Migration(11, 12) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("ALTER TABLE qr_records ADD COLUMN sku_record_id INTEGER")
-                database.execSQL(
-                    "CREATE INDEX IF NOT EXISTS index_qr_records_sku_record_id ON qr_records(sku_record_id)"
-                )
             }
         }
     }

@@ -23,8 +23,6 @@ data class QrRecord(
     val fieldSource: String? = null,
     @ColumnInfo(name = "field_note")
     val fieldNote: String? = null,
-    @ColumnInfo(name = "sku_record_id")
-    val skuRecordId: Long? = null,
     @ColumnInfo(name = "captured_at")
     val capturedAt: Long = System.currentTimeMillis()
 )
