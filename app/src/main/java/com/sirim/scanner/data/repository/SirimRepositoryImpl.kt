@@ -15,6 +15,7 @@ import java.io.File
 import java.io.FileOutputStream
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.Dispatchers
@@ -44,6 +45,15 @@ class SirimRepositoryImpl(
         )
         storageItems += exports.map { StorageRecord.SkuExport(it) }
         storageItems.sortedByDescending { it.createdAt }
+    }.onStart {
+        emit(
+            listOf(
+                StorageRecord.SirimScannerV2(
+                    totalRecords = 0,
+                    lastUpdated = 0L
+                )
+            )
+        )
     }
 
     override fun searchQr(query: String): Flow<List<QrRecord>> = qrDao.searchRecords("%$query%")
