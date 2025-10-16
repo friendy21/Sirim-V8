@@ -51,7 +51,6 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -133,10 +132,6 @@ fun QrScannerScreen(
     val scannerState by viewModel.scannerState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
-
-    var label by rememberSaveable { mutableStateOf("") }
-    var fieldSource by rememberSaveable { mutableStateOf("") }
-    var fieldNote by rememberSaveable { mutableStateOf("") }
 
     var brightnessSlider by rememberSaveable { mutableFloatStateOf(0f) }
     var isBrightnessExpanded by rememberSaveable { mutableStateOf(false) }
@@ -315,30 +310,14 @@ fun QrScannerScreen(
                 DetectionDetailsPanel(
                     modifier = Modifier.fillMaxWidth(),
                     lastDetection = lastDetection,
-                    label = label,
-                    onLabelChange = { label = it },
-                    fieldSource = fieldSource,
-                    onFieldSourceChange = { fieldSource = it },
-                    fieldNote = fieldNote,
-                    onFieldNoteChange = { fieldNote = it },
                     captureState = captureState,
                     onSaveRecord = {
                         viewModel.saveRecord(
-                            label = label,
-                            fieldSource = fieldSource,
-                            fieldNote = fieldNote,
-                            onSaved = { id ->
-                                label = ""
-                                fieldSource = ""
-                                fieldNote = ""
-                                onRecordSaved(id)
-                            },
-                            onDuplicate = { id ->
-                                label = ""
-                                fieldSource = ""
-                                fieldNote = ""
-                                onRecordSaved(id)
-                            }
+                            label = null,
+                            fieldSource = null,
+                            fieldNote = null,
+                            onSaved = onRecordSaved,
+                            onDuplicate = onRecordSaved
                         )
                     }
                 )
@@ -369,9 +348,6 @@ fun QrScannerScreen(
                     onRetake = {
                         previewController?.resumeAnalysis()
                         frozenBitmap = null
-                        label = ""
-                        fieldSource = ""
-                        fieldNote = ""
                         isBrightnessExpanded = false
                         viewModel.retry()
                     }
@@ -621,12 +597,6 @@ private fun BrightnessControl(
 private fun DetectionDetailsPanel(
     modifier: Modifier = Modifier,
     lastDetection: QrDetection?,
-    label: String,
-    onLabelChange: (String) -> Unit,
-    fieldSource: String,
-    onFieldSourceChange: (String) -> Unit,
-    fieldNote: String,
-    onFieldNoteChange: (String) -> Unit,
     captureState: QrCaptureState,
     onSaveRecord: () -> Unit
 ) {
@@ -668,28 +638,6 @@ private fun DetectionDetailsPanel(
                     fontWeight = FontWeight.Medium
                 )
             }
-
-            OutlinedTextField(
-                value = label,
-                onValueChange = onLabelChange,
-                label = { Text(stringResource(id = R.string.qr_optional_label)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = fieldSource,
-                onValueChange = onFieldSourceChange,
-                label = { Text(stringResource(id = R.string.qr_field_source_label)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = fieldNote,
-                onValueChange = onFieldNoteChange,
-                label = { Text(stringResource(id = R.string.qr_field_note_label)) },
-                modifier = Modifier.fillMaxWidth(),
-                minLines = 2
-            )
 
             val actionLabel = when (captureState) {
                 is QrCaptureState.Ready -> R.string.qr_action_save
