@@ -87,6 +87,12 @@ class SirimRepositoryImpl(
 
     override suspend fun getAllQrRecords(): List<QrRecord> = qrDao.getAllRecordsOnce()
 
+    override fun observeQrRecordsForSku(skuId: Long): Flow<List<QrRecord>> =
+        qrDao.getRecordsForSku(skuId)
+
+    override suspend fun getQrRecordsForSku(skuId: Long): List<QrRecord> =
+        qrDao.getRecordsForSkuOnce(skuId)
+
     override suspend fun findByQrPayload(qrPayload: String): QrRecord? = qrDao.findByPayload(qrPayload)
 
     override suspend fun findByBarcode(barcode: String): SkuRecord? = skuDao.findByBarcode(barcode)

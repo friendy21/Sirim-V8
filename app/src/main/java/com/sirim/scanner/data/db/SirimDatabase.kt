@@ -132,9 +132,34 @@ abstract class SirimDatabase : RoomDatabase() {
 
         val MIGRATION_11_12: Migration = object : Migration(11, 12) {
             override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("ALTER TABLE sku_exports ADD COLUMN barcode TEXT NOT NULL DEFAULT ''")
-                database.execSQL("ALTER TABLE sku_exports ADD COLUMN field_count INTEGER NOT NULL DEFAULT 0")
-                database.execSQL("ALTER TABLE sku_exports ADD COLUMN ocr_count INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("BEGIN TRANSACTION")
+                try {
+                    database.execSQL(
+                        "CREATE TABLE IF NOT EXISTS qr_records_new (" +
+                            "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                            "payload TEXT NOT NULL, " +
+                            "label TEXT, " +
+                            "field_source TEXT, " +
+                            "field_note TEXT, " +
+                            "sku_id INTEGER, " +
+                            "captured_at INTEGER NOT NULL, " +
+                            "FOREIGN KEY(sku_id) REFERENCES sku_records(id) ON DELETE SET NULL" +
+                            ")"
+                    )
+                    database.execSQL(
+                        "INSERT INTO qr_records_new (id, payload, label, field_source, field_note, captured_at) " +
+                            "SELECT id, payload, label, field_source, field_note, captured_at FROM qr_records"
+                    )
+                    database.execSQL("DROP TABLE qr_records")
+                    database.execSQL("ALTER TABLE qr_records_new RENAME TO qr_records")
+                    database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_qr_records_payload ON qr_records(payload)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_qr_records_captured_at ON qr_records(captured_at)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_qr_records_sku_id ON qr_records(sku_id)")
+                    database.execSQL("COMMIT")
+                } catch (error: Exception) {
+                    database.execSQL("ROLLBACK")
+                    throw error
+                }
             }
         }
     }

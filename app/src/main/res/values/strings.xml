@@ -43,4 +43,20 @@
     <string name="qr_reference_title">SIRIM Seal Reference</string>
     <string name="qr_reference_body">Match the coloured SIRIM seal and capture the serial ID printed directly beneath the QR code.</string>
     <string name="qr_reference_content_description">Reference illustration showing the SIRIM seal and serial placement</string>
+    <string name="qr_session_heading">Active SKU session</string>
+    <string name="qr_session_active">Session: %1$s</string>
+    <string name="qr_session_missing">No SKU selected</string>
+    <string name="qr_session_not_found">SKU not found</string>
+    <string name="qr_session_loading">Checking session…</string>
+    <string name="qr_session_active_detail">OCR captures will be linked to SKU %1$s.</string>
+    <string name="qr_session_missing_detail">Select a SKU session before saving OCR captures.</string>
+    <string name="qr_session_not_found_detail">The previously selected SKU could not be found. Choose another session before saving.</string>
+    <string name="qr_session_loading_detail">Validating the linked SKU session…</string>
+    <string name="session_guard_missing_title">Select a SKU first</string>
+    <string name="session_guard_missing_message">Capture a SKU barcode before recording OCR data so the results can be linked correctly.</string>
+    <string name="session_guard_missing_capture">Open SKU scanner</string>
+    <string name="session_guard_cancel">Cancel</string>
+    <string name="session_guard_picker_title">Choose a SKU session</string>
+    <string name="session_guard_picker_message">Pick the SKU you want new OCR scans to be linked to. The most recent capture is selected by default.</string>
+    <string name="session_guard_picker_confirm">Use this session</string>
 </resources>

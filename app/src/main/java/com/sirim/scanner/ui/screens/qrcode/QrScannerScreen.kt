@@ -45,10 +45,10 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.ZoomIn
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledButton
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -95,8 +95,9 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sirim.scanner.R
-import com.sirim.scanner.data.ocr.QrCodeAnalyzer
 import com.sirim.scanner.data.ocr.QrDetection
+import com.sirim.scanner.data.ocr.QrCodeAnalyzer
+import com.sirim.scanner.data.preferences.SkuSessionTracker
 import com.sirim.scanner.data.repository.SirimRepository
 import java.util.Locale
 import java.util.concurrent.ExecutorService
@@ -113,17 +114,19 @@ fun QrScannerScreen(
     onRecordSaved: (Long) -> Unit,
     onOpenSettings: () -> Unit,
     repository: SirimRepository,
-    analyzer: QrCodeAnalyzer
+    analyzer: QrCodeAnalyzer,
+    sessionTracker: SkuSessionTracker
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
     val viewModel: QrScannerViewModel = viewModel(
-        factory = QrScannerViewModel.Factory(repository, analyzer)
+        factory = QrScannerViewModel.Factory(repository, analyzer, sessionTracker)
     )
 
     val lastDetection by viewModel.lastDetection.collectAsStateWithLifecycle()
     val captureState by viewModel.captureState.collectAsStateWithLifecycle()
     val scannerState by viewModel.scannerState.collectAsStateWithLifecycle()
+    val sessionState by viewModel.sessionState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     var brightnessSlider by rememberSaveable { mutableFloatStateOf(0f) }
@@ -282,7 +285,8 @@ fun QrScannerScreen(
                     .fillMaxWidth()
                     .align(Alignment.TopCenter)
                     .padding(horizontal = 16.dp, vertical = 24.dp),
-                onBack = onBack
+                onBack = onBack,
+                sessionState = sessionState
             )
         }
     }
@@ -319,6 +323,7 @@ fun QrScannerScreen(
                         state = scannerState,
                         captureState = captureState,
                         lastDetection = lastDetection,
+                        sessionState = sessionState,
                         showReference = showReferenceCard,
                         zoomState = currentZoomState,
                         zoomValue = zoomSlider,
@@ -367,6 +372,7 @@ fun QrScannerScreen(
                         state = scannerState,
                         captureState = captureState,
                         lastDetection = lastDetection,
+                        sessionState = sessionState,
                         showReference = showReferenceCard,
                         zoomState = currentZoomState,
                         zoomValue = zoomSlider,
@@ -408,7 +414,8 @@ fun QrScannerScreen(
 @Composable
 private fun CameraTopBar(
     modifier: Modifier = Modifier,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    sessionState: SkuSessionState
 ) {
     Row(
         modifier = modifier,
@@ -431,12 +438,18 @@ private fun CameraTopBar(
             tonalElevation = 6.dp,
             shape = RoundedCornerShape(16.dp)
         ) {
-            Text(
+            Column(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                text = stringResource(id = R.string.qr_scanner_title),
-                textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.titleSmall
-            )
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = stringResource(id = R.string.qr_scanner_title),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.titleSmall
+                )
+                SessionStatusLabel(sessionState = sessionState)
+            }
         }
 
         Spacer(modifier = Modifier.size(48.dp))
@@ -449,6 +462,7 @@ private fun ScannerControlPanel(
     state: ScannerWorkflowState,
     captureState: QrCaptureState,
     lastDetection: QrDetection?,
+    sessionState: SkuSessionState,
     showReference: Boolean,
     zoomState: ZoomState?,
     zoomValue: Float,
@@ -467,6 +481,11 @@ private fun ScannerControlPanel(
         if (showReference) {
             SirimReferenceCard(modifier = Modifier.fillMaxWidth())
         }
+
+        SessionStatusCard(
+            modifier = Modifier.fillMaxWidth(),
+            sessionState = sessionState
+        )
 
         DetectionDetailsCard(
             modifier = Modifier.fillMaxWidth(),
@@ -489,7 +508,8 @@ private fun ScannerControlPanel(
             onToggleFlash = onToggleFlash,
             onOpenSettings = onOpenSettings,
             onRetake = onRetake,
-            onSave = onSave
+            onSave = onSave,
+            saveEnabled = sessionState is SkuSessionState.Active
         )
     }
 }
@@ -621,7 +641,8 @@ private fun CameraActionButtons(
     onToggleFlash: () -> Unit,
     onOpenSettings: () -> Unit,
     onRetake: () -> Unit,
-    onSave: () -> Unit
+    onSave: () -> Unit,
+    saveEnabled: Boolean
 ) {
     Surface(
         modifier = modifier,
@@ -685,7 +706,7 @@ private fun CameraActionButtons(
                     FilledButton(
                         onClick = onSave,
                         modifier = Modifier.weight(1f),
-                        enabled = captureState !is QrCaptureState.Saving
+                        enabled = saveEnabled && captureState !is QrCaptureState.Saving
                     ) {
                         if (captureState is QrCaptureState.Saving) {
                             CircularProgressIndicator(
@@ -724,6 +745,70 @@ private fun CameraActionButtons(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SessionStatusLabel(sessionState: SkuSessionState) {
+    val text = when (sessionState) {
+        is SkuSessionState.Active -> stringResource(
+            id = R.string.qr_session_active,
+            sessionState.record.barcode
+        )
+        is SkuSessionState.Missing -> when (sessionState.reason) {
+            SessionMissingReason.NotSelected -> stringResource(id = R.string.qr_session_missing)
+            SessionMissingReason.NotFound -> stringResource(id = R.string.qr_session_not_found)
+        }
+        SkuSessionState.Loading -> stringResource(id = R.string.qr_session_loading)
+    }
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.primary,
+        textAlign = TextAlign.Center
+    )
+}
+
+@Composable
+private fun SessionStatusCard(
+    modifier: Modifier = Modifier,
+    sessionState: SkuSessionState
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = stringResource(id = R.string.qr_session_heading),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            val (message, tone) = when (sessionState) {
+                is SkuSessionState.Active -> stringResource(
+                    id = R.string.qr_session_active_detail,
+                    sessionState.record.barcode
+                ) to MaterialTheme.colorScheme.onSurface
+                is SkuSessionState.Missing -> when (sessionState.reason) {
+                    SessionMissingReason.NotFound -> stringResource(id = R.string.qr_session_not_found_detail)
+                    SessionMissingReason.NotSelected -> stringResource(id = R.string.qr_session_missing_detail)
+                } to MaterialTheme.colorScheme.error
+                SkuSessionState.Loading -> stringResource(id = R.string.qr_session_loading_detail) to MaterialTheme.colorScheme.onSurfaceVariant
+            }
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = tone
+            )
         }
     }
 }

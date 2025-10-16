@@ -94,6 +94,9 @@ dependencies {
     // Desugared JDK
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4") // keep; latest broadly used & stable
     testImplementation(kotlin("test"))
+    testImplementation(platform("androidx.compose:compose-bom:2025.09.01"))
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("androidx.compose.ui:ui-test-manifest")
     // Jetpack Compose — use BOM to pin all compose* + Material3
     implementation(platform("androidx.compose:compose-bom:2025.09.01"))
     androidTestImplementation(platform("androidx.compose:compose-bom:2025.09.01"))
