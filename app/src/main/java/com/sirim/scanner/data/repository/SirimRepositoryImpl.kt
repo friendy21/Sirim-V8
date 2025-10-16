@@ -39,17 +39,21 @@ class SirimRepositoryImpl(
     override val storageRecords: Flow<List<StorageRecord>> = combine(qrRecords, skuExports) { qr, exports ->
         val storageItems = mutableListOf<StorageRecord>()
         val lastUpdated = qr.maxOfOrNull { it.capturedAt } ?: 0L
+        val linkedRecords = qr.count { it.skuId != null }
         storageItems += StorageRecord.SirimScannerV2(
             totalRecords = qr.size,
+            linkedRecords = linkedRecords,
             lastUpdated = lastUpdated
         )
         storageItems += exports.map { StorageRecord.SkuExport(it) }
-        storageItems.sortedByDescending { it.createdAt }
+        storageItems.sortByDescending { it.createdAt }
+        storageItems
     }.onStart {
         emit(
             listOf(
                 StorageRecord.SirimScannerV2(
                     totalRecords = 0,
+                    linkedRecords = 0,
                     lastUpdated = 0L
                 )
             )

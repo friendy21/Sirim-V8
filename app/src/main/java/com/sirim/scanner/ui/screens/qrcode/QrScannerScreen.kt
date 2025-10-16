@@ -94,6 +94,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sirim.scanner.R
 import com.sirim.scanner.data.ocr.QrCodeAnalyzer
 import com.sirim.scanner.data.ocr.QrDetection
+import com.sirim.scanner.data.preferences.SkuSessionTracker
 import com.sirim.scanner.data.repository.SirimRepository
 import java.util.Locale
 import java.util.concurrent.ExecutorService
@@ -110,12 +111,13 @@ fun QrScannerScreen(
     onRecordSaved: (Long) -> Unit,
     onOpenSettings: () -> Unit,
     repository: SirimRepository,
-    analyzer: QrCodeAnalyzer
+    analyzer: QrCodeAnalyzer,
+    sessionTracker: SkuSessionTracker
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
     val viewModel: QrScannerViewModel = viewModel(
-        factory = QrScannerViewModel.Factory(repository, analyzer)
+        factory = QrScannerViewModel.Factory(repository, analyzer, sessionTracker)
     )
 
     val lastDetection by viewModel.lastDetection.collectAsStateWithLifecycle()

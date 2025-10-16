@@ -55,6 +55,7 @@ class ExportManager(private val context: Context) {
                 }
 
             val bodyStyle = workbook.createBodyStyle()
+            val skuRowIndex = mutableMapOf<Long, Int>()
             skuRecords.forEachIndexed { index, record ->
                 val row = skuSheet.createRow(index + 1)
                 row.createCell(0).setCellValue(record.barcode)
@@ -68,6 +69,7 @@ class ExportManager(private val context: Context) {
                 row.createCell(8).setCellValue(if (record.isVerified) "Verified" else "Pending")
                 row.createCell(9).setCellValue(record.createdAt.toReadableDate())
                 row.forEach { cell -> cell.cellStyle = bodyStyle }
+                skuRowIndex[record.id] = index + 2
             }
 
             val ocrSheet = workbook.createSheet("SIRIM Scanner 2.0")
@@ -75,23 +77,39 @@ class ExportManager(private val context: Context) {
             ocrSheet.setColumnWidth(1, 25 * 256)
             ocrSheet.setColumnWidth(2, 25 * 256)
             ocrSheet.setColumnWidth(3, 25 * 256)
-            ocrSheet.setColumnWidth(4, 20 * 256)
+            ocrSheet.setColumnWidth(4, 25 * 256)
+            ocrSheet.setColumnWidth(5, 18 * 256)
+            ocrSheet.setColumnWidth(6, 20 * 256)
 
             val ocrHeader = ocrSheet.createRow(0)
-            listOf("Captured Text", "Label", "Field Source", "Field Note", "Captured")
+            listOf(
+                "Captured Text",
+                "Label",
+                "Field Source",
+                "Field Note",
+                "Linked SKU",
+                "SKU Row",
+                "Captured"
+            )
                 .forEachIndexed { index, title ->
                     val cell = ocrHeader.createCell(index)
                     cell.setCellValue(title)
                     cell.cellStyle = headerStyle
                 }
 
+            val skuRecordsById = skuRecords.associateBy { it.id }
             ocrRecords.forEachIndexed { index, record ->
                 val row = ocrSheet.createRow(index + 1)
                 row.createCell(0).setCellValue(record.payload)
                 row.createCell(1).setCellValue(record.label.orEmpty())
                 row.createCell(2).setCellValue(record.fieldSource.orEmpty())
                 row.createCell(3).setCellValue(record.fieldNote.orEmpty())
-                row.createCell(4).setCellValue(record.capturedAt.toReadableDate())
+                val linkedSku = record.skuId?.let(skuRecordsById::get)
+                val skuCellValue = linkedSku?.barcode ?: "Unlinked"
+                row.createCell(4).setCellValue(skuCellValue)
+                val rowNumber = record.skuId?.let(skuRowIndex::get)
+                row.createCell(5).setCellValue(rowNumber?.let { "Row $it" }.orEmpty())
+                row.createCell(6).setCellValue(record.capturedAt.toReadableDate())
                 row.forEach { cell -> cell.cellStyle = bodyStyle }
             }
 
