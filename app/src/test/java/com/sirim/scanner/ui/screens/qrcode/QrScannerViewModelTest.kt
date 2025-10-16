@@ -174,8 +174,8 @@ class QrScannerViewModelTest {
         private val skuRecordsFlow = MutableStateFlow<List<SkuRecord>>(emptyList())
         private val skuExportsFlow = MutableStateFlow<List<SkuExportRecord>>(emptyList())
         private val storageFlow = MutableStateFlow<List<StorageRecord>>(emptyList())
-        private val qrRecords = mutableListOf<QrRecord>()
-        private val skuRecords = mutableMapOf<Long, SkuRecord>()
+        private val qrRecordsList = mutableListOf<QrRecord>()
+        private val skuRecordsMap = mutableMapOf<Long, SkuRecord>()
         private var nextQrId = 1L
         private var nextExportId = 1L
 
@@ -194,8 +194,8 @@ class QrScannerViewModelTest {
             get() = skuExportsFlow
 
         fun setSkuRecords(records: List<SkuRecord>) {
-            skuRecords.clear()
-            records.forEach { skuRecords[it.id] = it }
+            skuRecordsMap.clear()
+            records.forEach { skuRecordsMap[it.id] = it }
             skuRecordsFlow.value = records
         }
 
@@ -208,17 +208,17 @@ class QrScannerViewModelTest {
         override suspend fun upsertQr(record: QrRecord): Long {
             val id = if (record.id == 0L) nextQrId++ else record.id
             val stored = record.copy(id = id)
-            qrRecords.removeAll { it.id == id }
-            qrRecords.add(stored)
-            qrRecordsFlow.value = qrRecords.toList()
+            qrRecordsList.removeAll { it.id == id }
+            qrRecordsList.add(stored)
+            qrRecordsFlow.value = qrRecordsList.toList()
             return id
         }
 
         override suspend fun upsertSku(record: SkuRecord): Long {
-            val assignedId = if (record.id == 0L) (skuRecords.keys.maxOrNull() ?: 0L) + 1 else record.id
+            val assignedId = if (record.id == 0L) (skuRecordsMap.keys.maxOrNull() ?: 0L) + 1 else record.id
             val stored = record.copy(id = assignedId)
-            skuRecords[stored.id] = stored
-            skuRecordsFlow.value = skuRecords.values.toList()
+            skuRecordsMap[stored.id] = stored
+            skuRecordsFlow.value = skuRecordsMap.values.toList()
             return stored.id
         }
 
@@ -227,7 +227,7 @@ class QrScannerViewModelTest {
         override suspend fun deleteSku(record: SkuRecord) = Unit
 
         override suspend fun clearQr() {
-            qrRecords.clear()
+            qrRecordsList.clear()
             qrRecordsFlow.value = emptyList()
         }
 
@@ -236,25 +236,25 @@ class QrScannerViewModelTest {
             skuExportsFlow.value = emptyList()
         }
 
-        override suspend fun getQrRecord(id: Long): QrRecord? = qrRecords.firstOrNull { it.id == id }
+        override suspend fun getQrRecord(id: Long): QrRecord? = qrRecordsList.firstOrNull { it.id == id }
 
-        override suspend fun getSkuRecord(id: Long): SkuRecord? = skuRecords[id]
+        override suspend fun getSkuRecord(id: Long): SkuRecord? = skuRecordsMap[id]
 
-        override suspend fun getAllSkuRecords(): List<SkuRecord> = skuRecords.values.toList()
+        override suspend fun getAllSkuRecords(): List<SkuRecord> = skuRecordsMap.values.toList()
 
-        override suspend fun getAllQrRecords(): List<QrRecord> = qrRecords.toList()
+        override suspend fun getAllQrRecords(): List<QrRecord> = qrRecordsList.toList()
 
         override fun observeQrRecordsForSku(skuId: Long): Flow<List<QrRecord>> =
             qrRecordsFlow.map { records -> records.filter { it.skuId == skuId } }
 
         override suspend fun getQrRecordsForSku(skuId: Long): List<QrRecord> =
-            qrRecords.filter { it.skuId == skuId }
+            qrRecordsList.filter { it.skuId == skuId }
 
         override suspend fun findByQrPayload(qrPayload: String): QrRecord? =
-            qrRecords.firstOrNull { it.payload == qrPayload }
+            qrRecordsList.firstOrNull { it.payload == qrPayload }
 
         override suspend fun findByBarcode(barcode: String): SkuRecord? =
-            skuRecords.values.firstOrNull { it.barcode == barcode }
+            skuRecordsMap.values.firstOrNull { it.barcode == barcode }
 
         override suspend fun findSkuExportByBarcode(barcode: String): SkuExportRecord? {
             return lastExportRecord.get()?.takeIf { it.barcode == barcode }
