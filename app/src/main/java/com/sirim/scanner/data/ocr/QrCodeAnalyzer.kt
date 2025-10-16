@@ -167,7 +167,7 @@ private fun String.normalizeSerial(): String {
 
 private fun String.normalizeForComparison(): String {
     return trim()
-        .replace("\s+".toRegex(), " ")
+        .replace("\\s+".toRegex(), " ")
         .uppercase(Locale.ROOT)
 }
 

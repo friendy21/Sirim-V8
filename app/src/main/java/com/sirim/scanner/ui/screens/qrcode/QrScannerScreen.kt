@@ -304,13 +304,13 @@ fun QrScannerScreen(
                     previewContent(
                         Modifier
                             .weight(1f)
-                            .fillMaxHeight()
+                            .fillMaxSize()
                     )
 
                     ScannerControlPanel(
                         modifier = Modifier
-                            .fillMaxHeight()
-                            .widthIn(min = maxWidth * 0.32f, max = maxWidth * 0.45f)
+                            .fillMaxSize()
+                            .widthIn(min = this@BoxWithConstraints.maxWidth * 0.32f, max = this@BoxWithConstraints.maxWidth * 0.45f)
                             .padding(16.dp),
                         state = scannerState,
                         lastDetection = lastDetection,
