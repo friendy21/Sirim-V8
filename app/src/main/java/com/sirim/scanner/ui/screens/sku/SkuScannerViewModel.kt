@@ -198,19 +198,29 @@ class SkuScannerViewModel private constructor(
     private fun exportSkuWorkbook() {
         appScope.launch {
             runCatching {
-                val skuRecords = repository.getAllSkuRecords()
+                val currentSkuId = sessionTracker.getCurrentSkuId() ?: return@launch
+                val skuRecord = repository.getSkuRecord(currentSkuId) ?: return@launch
                 val ocrRecords = repository.getAllQrRecords()
-                if (skuRecords.isEmpty() && ocrRecords.isEmpty()) return@launch
 
-                val uri = exportManager.exportSkuToExcel(skuRecords, ocrRecords)
-                val fileName = uri.lastPathSegment ?: "sku_records.xlsx"
-                val totalCount = skuRecords.size + ocrRecords.size
-                val exportRecord = SkuExportRecord(
-                    uri = uri.toString(),
-                    fileName = fileName,
-                    recordCount = totalCount,
-                    updatedAt = System.currentTimeMillis()
-                )
+                val exportResult = exportManager.exportSkuToExcel(skuRecord, ocrRecords)
+                val existing = repository.findSkuExportByBarcode(skuRecord.barcode)
+                val now = System.currentTimeMillis()
+                val exportRecord = (existing?.copy(
+                    uri = exportResult.uri.toString(),
+                    fileName = exportResult.fileName,
+                    fieldCount = exportResult.fieldCount,
+                    ocrCount = exportResult.ocrCount,
+                    recordCount = exportResult.fieldCount + exportResult.ocrCount,
+                    updatedAt = now
+                ) ?: SkuExportRecord(
+                    barcode = skuRecord.barcode,
+                    uri = exportResult.uri.toString(),
+                    fileName = exportResult.fileName,
+                    fieldCount = exportResult.fieldCount,
+                    ocrCount = exportResult.ocrCount,
+                    recordCount = exportResult.fieldCount + exportResult.ocrCount,
+                    updatedAt = now
+                ))
                 repository.recordSkuExport(exportRecord)
             }
         }
