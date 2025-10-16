@@ -46,7 +46,7 @@ import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.ZoomIn
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledButton
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -705,7 +705,7 @@ private fun CameraActionButtons(
                         Text(text = stringResource(id = R.string.qr_controls_retake))
                     }
 
-                    FilledButton(
+                    Button(
                         onClick = onSave,
                         modifier = Modifier.weight(1f),
                         enabled = saveEnabled && captureState !is QrCaptureState.Saving
