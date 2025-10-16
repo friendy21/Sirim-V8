@@ -6,13 +6,15 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
 import kotlinx.coroutines.tasks.await
 
 class QrCodeAnalyzer {
     private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-    private val serialPattern = Regex("^[A-Z0-9]{6,}\$")
+    private val serialPattern = Regex("^[A-Z0-9]{6,}$")
+    private val referenceKeywords = listOf("SIRIM", "SIRIM QAS", "CERTIFIED")
 
     suspend fun analyze(imageProxy: ImageProxy): QrDetection? {
         val mediaImage = imageProxy.image ?: return null
@@ -39,81 +41,80 @@ class QrCodeAnalyzer {
         val blocks = result.textBlocks
         if (blocks.isEmpty()) {
             val fallback = result.text.trim().ifEmpty { null }
-            return fallback?.let { it to null }
-        }
-
-        val prioritizedLine = blocks
-            .flatMap { block -> block.lines }
-            .mapNotNull { line ->
-                val boundingBox = line.boundingBox ?: return@mapNotNull null
-                val rawText = line.text.trim()
-                if (rawText.isEmpty()) return@mapNotNull null
-                LineCandidate(
-                    text = rawText,
-                    boundingBox = boundingBox,
-                    bottom = boundingBox.bottom
-                )
-            }
-            .sortedByDescending { it.bottom }
-            .firstOrNull { candidate ->
-                val normalized = candidate.text.replace(" ", "").replace("-", "")
-                serialPattern.matches(normalized)
-            }
-
-        if (prioritizedLine != null) {
-            val normalized = prioritizedLine.text
-                .replace(" ", "")
-                .replace("-", "")
-                .uppercase()
-            if (normalized.isNotEmpty()) {
-                return normalized to prioritizedLine.boundingBox
+            val hasReferenceMarkers = fallback?.hasReferenceMarkers(referenceKeywords) == true
+            return if (hasReferenceMarkers) {
+                fallback?.normalizeSerial()
+                    ?.takeIf { serialPattern.matches(it) }
+                    ?.let { it to null }
+            } else {
+                null
             }
         }
 
-        val bestBlock = blocks
-            .mapNotNull { block ->
-                val boundingBox = block.boundingBox ?: return@mapNotNull null
-                val text = block.text.trim()
-                if (text.isEmpty()) {
-                    null
-                } else {
-                    block to boundingBox.bottom
+        val blockCandidates = blocks.mapNotNull { block ->
+            val boundingBox = block.boundingBox ?: return@mapNotNull null
+            val blockText = block.text.normalizeForComparison()
+            val hasReference = referenceKeywords.any { keyword ->
+                blockText.contains(keyword)
+            }
+            BlockCandidate(
+                block = block,
+                boundingBox = boundingBox,
+                bottom = boundingBox.bottom,
+                hasReference = hasReference
+            )
+        }
+
+        if (blockCandidates.isEmpty()) {
+            return null
+        }
+
+        val hasReferenceBlock = blockCandidates.any { it.hasReference }
+        val hasReferenceAnywhere = hasReferenceBlock || result.text.hasReferenceMarkers(referenceKeywords)
+        if (!hasReferenceAnywhere) {
+            return null
+        }
+
+        val serialCandidate = blockCandidates
+            .flatMap { candidate ->
+                candidate.block.lines.mapNotNull { line ->
+                    val boundingBox = line.boundingBox ?: return@mapNotNull null
+                    val rawText = line.text.trim()
+                    if (rawText.isEmpty()) return@mapNotNull null
+                    val normalized = rawText.normalizeSerial()
+                    if (!serialPattern.matches(normalized)) return@mapNotNull null
+                    LineCandidate(
+                        normalized = normalized,
+                        boundingBox = boundingBox,
+                        bottom = boundingBox.bottom,
+                        blockHasReference = candidate.hasReference
+                    )
                 }
             }
-            .maxByOrNull { (_, bottom) -> bottom }
-            ?.first
-
-        val candidateText = bestBlock?.lines
-            ?.map { line -> line.text.trim() }
-            ?.filter { it.isNotEmpty() }
-            ?.joinToString(separator = "\n")
-
-        if (!candidateText.isNullOrBlank()) {
-            return candidateText to bestBlock?.boundingBox
-        }
-
-        val fallback = blocks
-            .flatMap { block -> block.lines }
-            .sortedBy { line -> line.boundingBox?.bottom ?: Int.MIN_VALUE }
-            .lastOrNull { line -> line.text.isNotBlank() }
-            ?.let { it.text to it.boundingBox }
-
-        if (fallback != null) {
-            val trimmed = fallback.first.trim().ifEmpty { null }
-            if (trimmed != null) {
-                return trimmed to fallback.second
+            .sortedByDescending { it.bottom }
+            .firstOrNull { lineCandidate ->
+                val referenceAbove = blockCandidates.any { candidate ->
+                    candidate.hasReference && candidate.bottom <= lineCandidate.boundingBox.top
+                }
+                lineCandidate.blockHasReference || referenceAbove
             }
-        }
 
-        val rawText = result.text.trim().ifEmpty { null }
-        return rawText?.let { it to null }
+        return serialCandidate?.let { it.normalized to it.boundingBox }
     }
 }
 
 private data class LineCandidate(
-    val text: String,
+    val normalized: String,
     val boundingBox: Rect,
-    val bottom: Int
+    val bottom: Int,
+    val blockHasReference: Boolean
+)
+
+private data class BlockCandidate(
+    val block: Text.TextBlock,
+    val boundingBox: Rect,
+    val bottom: Int,
+    val hasReference: Boolean
 )
 
 data class QrDetection(
@@ -155,4 +156,23 @@ private fun createNormalizedBoundingBox(
         right = max(left, right),
         bottom = max(top, bottom)
     )
+}
+
+private fun String.normalizeSerial(): String {
+    return trim()
+        .replace(" ", "")
+        .replace("-", "")
+        .uppercase(Locale.ROOT)
+}
+
+private fun String.normalizeForComparison(): String {
+    return trim()
+        .replace("\s+".toRegex(), " ")
+        .uppercase(Locale.ROOT)
+}
+
+private fun String.hasReferenceMarkers(referenceKeywords: List<String>): Boolean {
+    if (isBlank()) return false
+    val normalized = normalizeForComparison()
+    return referenceKeywords.any { keyword -> normalized.contains(keyword) }
 }
