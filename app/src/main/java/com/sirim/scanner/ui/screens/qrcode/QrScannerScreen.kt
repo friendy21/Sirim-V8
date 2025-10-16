@@ -42,9 +42,12 @@ import androidx.compose.material.icons.rounded.Brightness6
 import androidx.compose.material.icons.rounded.FlashOff
 import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.ZoomIn
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -119,6 +122,7 @@ fun QrScannerScreen(
     )
 
     val lastDetection by viewModel.lastDetection.collectAsStateWithLifecycle()
+    val captureState by viewModel.captureState.collectAsStateWithLifecycle()
     val scannerState by viewModel.scannerState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -313,6 +317,7 @@ fun QrScannerScreen(
                             .widthIn(min = this@BoxWithConstraints.maxWidth * 0.32f, max = this@BoxWithConstraints.maxWidth * 0.45f)
                             .padding(16.dp),
                         state = scannerState,
+                        captureState = captureState,
                         lastDetection = lastDetection,
                         showReference = showReferenceCard,
                         zoomState = currentZoomState,
@@ -335,6 +340,15 @@ fun QrScannerScreen(
                             frozenBitmap = null
                             isBrightnessExpanded = false
                             viewModel.retry()
+                        },
+                        onSave = {
+                            viewModel.saveRecord(
+                                label = null,
+                                fieldSource = null,
+                                fieldNote = null,
+                                onSaved = onRecordSaved,
+                                onDuplicate = onRecordSaved
+                            )
                         }
                     )
                 }
@@ -351,6 +365,7 @@ fun QrScannerScreen(
                             .fillMaxWidth()
                             .padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 40.dp),
                         state = scannerState,
+                        captureState = captureState,
                         lastDetection = lastDetection,
                         showReference = showReferenceCard,
                         zoomState = currentZoomState,
@@ -373,6 +388,15 @@ fun QrScannerScreen(
                             frozenBitmap = null
                             isBrightnessExpanded = false
                             viewModel.retry()
+                        },
+                        onSave = {
+                            viewModel.saveRecord(
+                                label = null,
+                                fieldSource = null,
+                                fieldNote = null,
+                                onSaved = onRecordSaved,
+                                onDuplicate = onRecordSaved
+                            )
                         }
                     )
                 }
@@ -423,6 +447,7 @@ private fun CameraTopBar(
 private fun ScannerControlPanel(
     modifier: Modifier = Modifier,
     state: ScannerWorkflowState,
+    captureState: QrCaptureState,
     lastDetection: QrDetection?,
     showReference: Boolean,
     zoomState: ZoomState?,
@@ -432,7 +457,8 @@ private fun ScannerControlPanel(
     flashEnabled: Boolean,
     onToggleFlash: () -> Unit,
     onOpenSettings: () -> Unit,
-    onRetake: () -> Unit
+    onRetake: () -> Unit,
+    onSave: () -> Unit
 ) {
     Column(
         modifier = modifier.verticalScroll(rememberScrollState()),
@@ -457,11 +483,13 @@ private fun ScannerControlPanel(
         CameraActionButtons(
             modifier = Modifier.fillMaxWidth(),
             state = state,
+            captureState = captureState,
             isFlashOn = isFlashOn,
             flashEnabled = flashEnabled,
             onToggleFlash = onToggleFlash,
             onOpenSettings = onOpenSettings,
-            onRetake = onRetake
+            onRetake = onRetake,
+            onSave = onSave
         )
     }
 }
@@ -587,11 +615,13 @@ private fun ZoomSliderCard(
 private fun CameraActionButtons(
     modifier: Modifier = Modifier,
     state: ScannerWorkflowState,
+    captureState: QrCaptureState,
     isFlashOn: Boolean,
     flashEnabled: Boolean,
     onToggleFlash: () -> Unit,
     onOpenSettings: () -> Unit,
-    onRetake: () -> Unit
+    onRetake: () -> Unit,
+    onSave: () -> Unit
 ) {
     Surface(
         modifier = modifier,
@@ -650,6 +680,26 @@ private fun CameraActionButtons(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(text = stringResource(id = R.string.qr_controls_retake))
+                    }
+
+                    FilledButton(
+                        onClick = onSave,
+                        modifier = Modifier.weight(1f),
+                        enabled = captureState !is QrCaptureState.Saving
+                    ) {
+                        if (captureState is QrCaptureState.Saving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Rounded.Save,
+                                contentDescription = stringResource(id = R.string.qr_action_save)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = stringResource(id = R.string.qr_action_save))
                     }
 
                     val flashIcon = if (isFlashOn) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff
