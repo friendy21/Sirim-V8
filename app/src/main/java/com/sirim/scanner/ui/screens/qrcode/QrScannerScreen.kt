@@ -124,6 +124,7 @@ fun QrScannerScreen(
 
     var brightnessSlider by rememberSaveable { mutableFloatStateOf(0f) }
     var isBrightnessExpanded by rememberSaveable { mutableStateOf(false) }
+    var isZoomExpanded by rememberSaveable { mutableStateOf(false) }
     var camera by remember { mutableStateOf<Camera?>(null) }
     var previewController by remember { mutableStateOf<PreviewController?>(null) }
     var frozenBitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -256,6 +257,9 @@ fun QrScannerScreen(
                 onToggle = {
                     if (isExposureSupported) {
                         isBrightnessExpanded = !isBrightnessExpanded
+                        if (isBrightnessExpanded) {
+                            isZoomExpanded = false
+                        }
                     }
                 },
                 onValueChange = { value ->
@@ -785,13 +789,13 @@ private fun BrightnessControl(
                             .graphicsLayer { rotationZ = -90f }
                     )
 
-                    Text(
-                        text = String.format(Locale.getDefault(), "%+d", clampedValue.roundToInt()),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                        Text(
+                            text = String.format(Locale.getDefault(), "%+d", clampedValue.roundToInt()),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
                 }
             }
-        }
     }
 }
 
