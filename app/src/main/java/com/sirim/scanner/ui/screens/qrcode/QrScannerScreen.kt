@@ -872,7 +872,7 @@ private fun ViewfinderOverlay(
     }
 
     Canvas(modifier = modifier.graphicsLayer(alpha = 0.99f)) {
-        val overlayColor = Color.Black.copy(alpha = overlayAlpha)
+        val overlayColor = MaterialTheme.colorScheme.primary.copy(alpha = overlayAlpha)
         drawRect(color = overlayColor)
 
         val rectWidth = size.width * 0.72f
