@@ -8,15 +8,17 @@ sealed class StorageRecord {
 
     data class SirimScannerV2(
         val totalRecords: Int,
+        val linkedRecords: Int,
         val lastUpdated: Long
     ) : StorageRecord() {
         override val id: Long = 1
         override val createdAt: Long = lastUpdated
         override val title: String = "SIRIM Scanner 2.0"
-        override val description: String = when (totalRecords) {
-            0 -> "No text captures stored"
-            1 -> "1 text capture stored"
-            else -> "$totalRecords text captures stored"
+        override val description: String = when {
+            totalRecords == 0 -> "No text captures stored"
+            linkedRecords == 0 -> "$totalRecords text captures stored"
+            linkedRecords == totalRecords -> "$totalRecords text captures linked to SKUs"
+            else -> "$totalRecords text captures stored ($linkedRecords linked to SKUs)"
         }
     }
 
