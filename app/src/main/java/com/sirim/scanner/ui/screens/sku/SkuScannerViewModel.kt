@@ -40,6 +40,9 @@ class SkuScannerViewModel private constructor(
     private val _lastDetection = MutableStateFlow<BarcodeDetectionInfo?>(null)
     val lastDetection: StateFlow<BarcodeDetectionInfo?> = _lastDetection.asStateFlow()
 
+    private val _autoCaptureSignal = MutableStateFlow<AutoCaptureSignal?>(null)
+    val autoCaptureSignal: StateFlow<AutoCaptureSignal?> = _autoCaptureSignal.asStateFlow()
+
     val databaseInfo: StateFlow<SkuDatabaseInfo?> = repository.skuRecords
         .map { records ->
             SkuDatabaseInfo(
@@ -54,6 +57,32 @@ class SkuScannerViewModel private constructor(
         )
 
     private var pendingDetection: BarcodeDetection? = null
+    private var stabilityDetectionValue: String? = null
+    private var stabilityFrameCount: Int = 0
+    private var stabilityStartTime: Long = 0L
+    private var lastAutoCaptureDetection: String? = null
+    private var lastAutoCaptureTime: Long = 0L
+    private var autoCaptureEventId: Long = 0L
+
+    private fun resetStability() {
+        stabilityDetectionValue = null
+        stabilityFrameCount = 0
+        stabilityStartTime = 0L
+    }
+
+    private fun shouldTriggerAutoCapture(value: String, now: Long): Boolean {
+        if (_autoCaptureSignal.value != null) return false
+        if (_captureState.value !is CaptureState.Ready) return false
+        if (_captureState.value is CaptureState.Captured ||
+            _captureState.value is CaptureState.Processing
+        ) return false
+        val lastValue = lastAutoCaptureDetection
+        val withinCooldown = now - lastAutoCaptureTime < AUTO_CAPTURE_COOLDOWN_MS
+        if (lastValue != null && lastValue == value && withinCooldown) {
+            return false
+        }
+        return true
+    }
 
     fun analyzeFrame(imageProxy: ImageProxy) {
         if (_captureState.value is CaptureState.Captured || _captureState.value is CaptureState.Processing) {
@@ -70,15 +99,48 @@ class SkuScannerViewModel private constructor(
                 val detection = analyzer.analyze(imageProxy)
                 withContext(Dispatchers.Main) {
                     if (detection != null && detection.value.isNotBlank()) {
+                        val normalized = detection.value.trim()
+                        val now = System.currentTimeMillis()
+                        val isSameAsPrevious = stabilityDetectionValue == normalized
+                        if (isSameAsPrevious) {
+                            stabilityFrameCount += 1
+                        } else {
+                            stabilityDetectionValue = normalized
+                            stabilityFrameCount = 1
+                            stabilityStartTime = now
+                        }
+
+                        val stableDuration = now - stabilityStartTime
+                        val isStable = stabilityFrameCount >= STABLE_FRAME_THRESHOLD &&
+                            stableDuration >= STABLE_DURATION_MS
+
                         pendingDetection = detection
-                        _lastDetection.value = BarcodeDetectionInfo(
-                            value = detection.value,
+                        val detectionInfo = BarcodeDetectionInfo(
+                            value = normalized,
                             format = detection.format
                         )
+                        _lastDetection.value = detectionInfo
+
                         if (_captureState.value !is CaptureState.Captured) {
-                            _captureState.value = CaptureState.Ready("Barcode detected - Tap capture to save")
+                            val message = if (isStable) {
+                                "Barcode detected - Auto capturing..."
+                            } else {
+                                "Barcode detected - Hold steady for auto capture"
+                            }
+                            _captureState.value = CaptureState.Ready(message)
+                        }
+
+                        if (isStable && shouldTriggerAutoCapture(normalized, now)) {
+                            lastAutoCaptureDetection = normalized
+                            lastAutoCaptureTime = now
+                            autoCaptureEventId += 1
+                            _autoCaptureSignal.value = AutoCaptureSignal(
+                                id = autoCaptureEventId,
+                                detection = detectionInfo
+                            )
                         }
                     } else {
+                        resetStability()
                         if (_captureState.value !is CaptureState.Processing &&
                             _captureState.value !is CaptureState.Saved &&
                             _captureState.value !is CaptureState.Captured) {
@@ -117,15 +179,24 @@ class SkuScannerViewModel private constructor(
     }
 
     fun onCaptureError(message: String) {
+        lastAutoCaptureDetection = null
+        lastAutoCaptureTime = 0L
+        _autoCaptureSignal.value = null
         _captureState.value = CaptureState.Error(message)
     }
 
+    fun onAutoCaptureHandled() {
+        _autoCaptureSignal.value = null
+    }
+
     fun retakeCapture() {
-        _captureState.value = if (pendingDetection != null) {
-            CaptureState.Ready("Barcode detected - Tap capture to save")
-        } else {
-            CaptureState.Idle
-        }
+        pendingDetection = null
+        _lastDetection.value = null
+        resetStability()
+        lastAutoCaptureDetection = null
+        lastAutoCaptureTime = 0L
+        _autoCaptureSignal.value = null
+        _captureState.value = CaptureState.Idle
     }
 
     fun confirmCapture() {
@@ -189,6 +260,9 @@ class SkuScannerViewModel private constructor(
                 _captureState.value = CaptureState.Idle
                 _lastDetection.value = null
                 pendingDetection = null
+                lastAutoCaptureDetection = null
+                lastAutoCaptureTime = 0L
+                resetStability()
             } catch (error: Exception) {
                 _captureState.value = CaptureState.Error("Failed to save: ${error.message}")
             }
@@ -217,6 +291,10 @@ class SkuScannerViewModel private constructor(
     }
 
     companion object {
+        private const val STABLE_FRAME_THRESHOLD = 3
+        private const val STABLE_DURATION_MS = 300L
+        private const val AUTO_CAPTURE_COOLDOWN_MS = 1500L
+
         fun Factory(
             repository: SirimRepository,
             analyzer: BarcodeAnalyzer,
@@ -264,4 +342,9 @@ data class BarcodeDetectionInfo(
 data class SkuDatabaseInfo(
     val totalCount: Int,
     val uniqueCount: Int
+)
+
+data class AutoCaptureSignal(
+    val id: Long,
+    val detection: BarcodeDetectionInfo
 )

@@ -29,10 +29,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -54,8 +56,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.concurrent.Executors
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SkuScannerScreen(
@@ -82,7 +82,7 @@ fun SkuScannerScreen(
     val captureState by viewModel.captureState.collectAsState()
     val lastDetection by viewModel.lastDetection.collectAsState()
     val databaseInfo by viewModel.databaseInfo.collectAsState()
-    val captureAction = remember { mutableStateOf<(() -> Unit)?>(null) }
+    val autoCaptureSignal by viewModel.autoCaptureSignal.collectAsState()
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -165,7 +165,7 @@ fun SkuScannerScreen(
                     lifecycleOwner = lifecycleOwner,
                     viewModel = viewModel,
                     captureState = captureState,
-                    captureAction = captureAction
+                    autoCaptureSignal = autoCaptureSignal
                 )
             } else {
                 CameraPermissionCard(
@@ -193,31 +193,6 @@ fun SkuScannerScreen(
                 )
             }
 
-            // Capture Button
-            Button(
-                onClick = { captureAction.value?.invoke() },
-                enabled = captureState is CaptureState.Ready && captureAction.value != null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-            ) {
-                Icon(
-                    Icons.Rounded.Camera,
-                    contentDescription = null,
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    when (captureState) {
-                        is CaptureState.Processing -> "Saving..."
-                        is CaptureState.Saved -> "Saved!"
-                        is CaptureState.Error -> "Try Again"
-                        is CaptureState.Captured -> "Review above"
-                        else -> "Capture Barcode"
-                    },
-                    style = MaterialTheme.typography.titleMedium
-                )
-            }
         }
     }
 }
@@ -432,7 +407,7 @@ private fun SkuCameraPreview(
     lifecycleOwner: androidx.lifecycle.LifecycleOwner,
     viewModel: SkuScannerViewModel,
     captureState: CaptureState,
-    captureAction: MutableState<(() -> Unit)?>
+    autoCaptureSignal: AutoCaptureSignal?
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -450,6 +425,7 @@ private fun SkuCameraPreview(
             .build()
     }
     val analyzerExecutor = remember { Executors.newSingleThreadExecutor() }
+    val isCapturing = remember { mutableStateOf(false) }
 
     DisposableEffect(lifecycleOwner) {
         val mainExecutor = ContextCompat.getMainExecutor(context)
@@ -478,7 +454,6 @@ private fun SkuCameraPreview(
         }
         cameraProviderFuture.addListener(listener, mainExecutor)
         onDispose {
-            captureAction.value = null
             runCatching { cameraProviderFuture.get().unbindAll() }
             analyzerExecutor.shutdown()
         }
@@ -488,42 +463,58 @@ private fun SkuCameraPreview(
         camera.value?.cameraControl?.enableTorch(flashEnabled.value)
     }
 
-    LaunchedEffect(captureState, imageCapture) {
-        captureAction.value = if (captureState is CaptureState.Ready) {
-            {
-                captureAction.value = null
-                val executor = ContextCompat.getMainExecutor(context)
-                val photoFile = File.createTempFile("sku_capture_", ".jpg", context.cacheDir)
-                val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
-                imageCapture.takePicture(
-                    outputOptions,
-                    executor,
-                    object : ImageCapture.OnImageSavedCallback {
-                        override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
-                            scope.launch(Dispatchers.IO) {
-                                val bytes = runCatching { photoFile.readBytes() }.getOrNull()
-                                photoFile.delete()
-                                if (bytes != null) {
-                                    withContext(Dispatchers.Main) {
-                                        viewModel.onImageCaptured(bytes)
-                                    }
-                                } else {
-                                    withContext(Dispatchers.Main) {
-                                        viewModel.onCaptureError("Unable to read captured image")
-                                    }
+    fun triggerCapture() {
+        if (isCapturing.value) return
+        isCapturing.value = true
+        var createdFile: File? = null
+        try {
+            val executor = ContextCompat.getMainExecutor(context)
+            val photoFile = File.createTempFile("sku_capture_", ".jpg", context.cacheDir)
+            createdFile = photoFile
+            val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
+            imageCapture.takePicture(
+                outputOptions,
+                executor,
+                object : ImageCapture.OnImageSavedCallback {
+                    override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
+                        scope.launch(Dispatchers.IO) {
+                            val bytes = runCatching { photoFile.readBytes() }.getOrNull()
+                            photoFile.delete()
+                            if (bytes != null) {
+                                withContext(Dispatchers.Main) {
+                                    viewModel.onImageCaptured(bytes)
+                                    isCapturing.value = false
+                                }
+                            } else {
+                                withContext(Dispatchers.Main) {
+                                    viewModel.onCaptureError("Unable to read captured image")
+                                    isCapturing.value = false
                                 }
                             }
                         }
-
-                        override fun onError(exception: ImageCaptureException) {
-                            photoFile.delete()
-                            viewModel.onCaptureError("Capture failed: ${exception.message}")
-                        }
                     }
-                )
+
+                    override fun onError(exception: ImageCaptureException) {
+                        photoFile.delete()
+                        isCapturing.value = false
+                        viewModel.onCaptureError("Capture failed: ${exception.message}")
+                    }
+                }
+            )
+        } catch (error: Exception) {
+            createdFile?.delete()
+            isCapturing.value = false
+            viewModel.onCaptureError("Capture failed: ${error.message}")
+        }
+    }
+
+    LaunchedEffect(autoCaptureSignal?.id, captureState) {
+        if (autoCaptureSignal != null && captureState is CaptureState.Ready) {
+            try {
+                triggerCapture()
+            } finally {
+                viewModel.onAutoCaptureHandled()
             }
-        } else {
-            null
         }
     }
 
