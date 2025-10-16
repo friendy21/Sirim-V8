@@ -198,11 +198,8 @@ class SkuScannerViewModel private constructor(
     private fun exportSkuWorkbook(recordId: Long) {
         appScope.launch {
             runCatching {
-                val selectedSku = repository.getSkuRecord(recordId)
-                val skuRecords = selectedSku?.let(::listOf) ?: emptyList()
+                val selectedSku = repository.getSkuRecord(recordId) ?: return@launch
                 val ocrRecords = repository.getQrRecordsForSku(recordId)
-                if (skuRecords.isEmpty() && ocrRecords.isEmpty()) return@launch
-                if (selectedSku == null) return@launch
 
                 val exportResult = exportManager.exportSkuToExcel(selectedSku, ocrRecords)
                 val existing = repository.findSkuExportByBarcode(selectedSku.barcode)

@@ -71,33 +71,6 @@ class ExportManager(private val context: Context) {
     )
 
     internal object SkuWorkbookWriter {
-        private fun Long.toReadableDate(): String {
-            val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
-            return formatter.format(Date(this))
-        }
-
-        private fun XSSFWorkbook.createHeaderStyle(): XSSFCellStyle {
-            val font: XSSFFont = createFont().apply {
-                bold = true
-                color = org.apache.poi.ss.usermodel.IndexedColors.WHITE.index
-            }
-            return createCellStyle().apply {
-                setFont(font)
-                fillForegroundColor = org.apache.poi.ss.usermodel.IndexedColors.DARK_BLUE.index
-                fillPattern = FillPatternType.SOLID_FOREGROUND
-                alignment = HorizontalAlignment.CENTER
-            }
-        }
-
-        private fun XSSFWorkbook.createBodyStyle(): CellStyle = createCellStyle().apply {
-            alignment = HorizontalAlignment.LEFT
-        }
-
-        private fun Row.applyStyle(style: CellStyle) {
-            for (cell in this) {
-                cell.cellStyle = style
-            }
-        }
         internal val formHeaderTitles = listOf("Field", "Value")
 
         private data class FormField(
@@ -186,5 +159,33 @@ class ExportManager(private val context: Context) {
                 ocrHeaderRowIndex = ocrHeaderRowIndex
             )
         }
+    }
+}
+
+private fun Long.toReadableDate(): String {
+    val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
+    return formatter.format(Date(this))
+}
+
+private fun XSSFWorkbook.createHeaderStyle(): XSSFCellStyle {
+    val font: XSSFFont = createFont().apply {
+        bold = true
+        color = org.apache.poi.ss.usermodel.IndexedColors.WHITE.index
+    }
+    return createCellStyle().apply {
+        setFont(font)
+        fillForegroundColor = org.apache.poi.ss.usermodel.IndexedColors.DARK_BLUE.index
+        fillPattern = FillPatternType.SOLID_FOREGROUND
+        alignment = HorizontalAlignment.CENTER
+    }
+}
+
+private fun XSSFWorkbook.createBodyStyle(): CellStyle = createCellStyle().apply {
+    alignment = HorizontalAlignment.LEFT
+}
+
+private fun Row.applyStyle(style: CellStyle) {
+    for (cell in this) {
+        cell.cellStyle = style
     }
 }
