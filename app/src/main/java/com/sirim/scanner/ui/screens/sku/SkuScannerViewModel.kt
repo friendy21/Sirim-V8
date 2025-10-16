@@ -203,15 +203,25 @@ class SkuScannerViewModel private constructor(
                 val ocrRecords = repository.getQrRecordsForSku(recordId)
                 if (skuRecords.isEmpty() && ocrRecords.isEmpty()) return@launch
 
-                val uri = exportManager.exportSkuToExcel(skuRecords, ocrRecords)
-                val fileName = uri.lastPathSegment ?: "sku_records.xlsx"
-                val totalCount = skuRecords.size + ocrRecords.size
-                val exportRecord = SkuExportRecord(
-                    uri = uri.toString(),
-                    fileName = fileName,
-                    recordCount = totalCount,
-                    updatedAt = System.currentTimeMillis()
-                )
+                val exportResult = exportManager.exportSkuToExcel(skuRecord, ocrRecords)
+                val existing = repository.findSkuExportByBarcode(skuRecord.barcode)
+                val now = System.currentTimeMillis()
+                val exportRecord = (existing?.copy(
+                    uri = exportResult.uri.toString(),
+                    fileName = exportResult.fileName,
+                    fieldCount = exportResult.fieldCount,
+                    ocrCount = exportResult.ocrCount,
+                    recordCount = exportResult.fieldCount + exportResult.ocrCount,
+                    updatedAt = now
+                ) ?: SkuExportRecord(
+                    barcode = skuRecord.barcode,
+                    uri = exportResult.uri.toString(),
+                    fileName = exportResult.fileName,
+                    fieldCount = exportResult.fieldCount,
+                    ocrCount = exportResult.ocrCount,
+                    recordCount = exportResult.fieldCount + exportResult.ocrCount,
+                    updatedAt = now
+                ))
                 repository.recordSkuExport(exportRecord)
             }
         }

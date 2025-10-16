@@ -97,6 +97,9 @@ class SirimRepositoryImpl(
 
     override suspend fun findByBarcode(barcode: String): SkuRecord? = skuDao.findByBarcode(barcode)
 
+    override suspend fun findSkuExportByBarcode(barcode: String): SkuExportRecord? =
+        skuExportDao.findByBarcode(barcode)
+
     override suspend fun persistImage(bytes: ByteArray, extension: String): String {
         val directory = File(context.filesDir, "captured")
         if (!directory.exists()) directory.mkdirs()
