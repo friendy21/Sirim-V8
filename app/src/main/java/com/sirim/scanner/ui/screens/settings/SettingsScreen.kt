@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
@@ -40,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import com.sirim.scanner.BuildConfig
 import com.sirim.scanner.data.preferences.StartupPage
 import com.sirim.scanner.data.preferences.UserPreferences
+import com.sirim.scanner.data.preferences.PreferencesManager
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,7 +54,9 @@ fun SettingsScreen(
     onLogout: () -> Unit,
     onDismissAuthError: () -> Unit,
     onBack: () -> Unit,
-    onOpenFeedback: () -> Unit
+    onOpenFeedback: () -> Unit,
+    onReferenceMarkersSave: (List<String>) -> Unit,
+    onReferenceMarkersReset: () -> Unit
 ) {
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
@@ -103,6 +108,13 @@ fun SettingsScreen(
             )
 
             if (preferences.isSessionValid()) {
+                DetectionSettingsCard(
+                    customMarkers = preferences.customReferenceMarkers,
+                    activeMarkers = preferences.referenceMarkers,
+                    onSave = onReferenceMarkersSave,
+                    onReset = onReferenceMarkersReset
+                )
+                Spacer(modifier = Modifier.height(12.dp))
                 StartupPreferenceCard(
                     selected = preferences.startupPage,
                     onSelected = onStartupSelected
@@ -111,6 +123,96 @@ fun SettingsScreen(
             }
 
             AboutCard(onOpenFeedback = onOpenFeedback)
+        }
+    }
+}
+
+@Composable
+private fun DetectionSettingsCard(
+    customMarkers: List<String>,
+    activeMarkers: List<String>,
+    onSave: (List<String>) -> Unit,
+    onReset: () -> Unit
+) {
+    var markerText by rememberSaveable { mutableStateOf(customMarkers.joinToString(separator = "\n")) }
+    var statusMessage by rememberSaveable { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(customMarkers) {
+        markerText = customMarkers.joinToString(separator = "\n")
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                "SIRIM detection keywords",
+                style = androidx.compose.material3.MaterialTheme.typography.titleMedium
+            )
+            Text(
+                text = "Control which words must appear on the label before a scan is accepted as a SIRIM sticker.",
+                style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "Active keywords: ${activeMarkers.joinToString(", ")}",
+                style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            val placeholder = PreferencesManager.DEFAULT_REFERENCE_MARKERS.joinToString(", ")
+            OutlinedTextField(
+                value = markerText,
+                onValueChange = { markerText = it },
+                label = { Text("Custom keywords") },
+                placeholder = { Text(placeholder) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 120.dp),
+                minLines = 3,
+                maxLines = 6
+            )
+            Text(
+                text = "Enter one keyword per line (e.g. FRONT, TBA, TBD). Leave blank to fall back to defaults.",
+                style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = {
+                    val normalized = markerText
+                        .split('\n', ',', ';')
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() }
+                        .distinctBy { it.uppercase(Locale.ROOT) }
+                    onSave(normalized)
+                    statusMessage = if (normalized.isEmpty()) {
+                        "Defaults restored."
+                    } else {
+                        "Custom detection keywords saved."
+                    }
+                }) {
+                    Text("Save keywords")
+                }
+                TextButton(onClick = {
+                    markerText = ""
+                    onReset()
+                    statusMessage = "Reverted to default detection keywords."
+                }) {
+                    Text("Reset to default")
+                }
+            }
+            statusMessage?.let { message ->
+                Text(
+                    text = message,
+                    color = Color(0xFF2E7D32),
+                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall
+                )
+            }
         }
     }
 }
