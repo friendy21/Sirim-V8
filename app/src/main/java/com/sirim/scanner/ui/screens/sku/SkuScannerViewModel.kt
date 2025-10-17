@@ -53,6 +53,27 @@ class SkuScannerViewModel private constructor(
             initialValue = null
         )
 
+    val recentCaptures: StateFlow<List<SkuCapturePreview>> = repository.skuRecords
+        .map { records ->
+            records.asSequence()
+                .filter { it.imagePath?.isNotBlank() == true }
+                .sortedByDescending { it.createdAt }
+                .take(10)
+                .map {
+                    SkuCapturePreview(
+                        id = it.id,
+                        barcode = it.barcode,
+                        imagePath = it.imagePath
+                    )
+                }
+                .toList()
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
+
     private var pendingDetection: BarcodeDetection? = null
 
     fun analyzeFrame(imageProxy: ImageProxy) {
@@ -118,6 +139,46 @@ class SkuScannerViewModel private constructor(
 
     fun onCaptureError(message: String) {
         _captureState.value = CaptureState.Error(message)
+    }
+
+    fun processImportedImage(bytes: ByteArray) {
+        if (bytes.isEmpty()) {
+            pendingDetection = null
+            _lastDetection.value = null
+            _captureState.value = CaptureState.Error("Selected image is empty")
+            return
+        }
+
+        viewModelScope.launch {
+            _captureState.value = CaptureState.Processing("Analyzing photo...")
+            pendingDetection = null
+            _lastDetection.value = null
+
+            try {
+                val detection = withContext(Dispatchers.Default) {
+                    analyzer.analyze(bytes)
+                }
+
+                if (detection == null || detection.value.isBlank()) {
+                    _captureState.value = CaptureState.Error("No barcode found in selected photo")
+                    return@launch
+                }
+
+                pendingDetection = detection
+                val info = BarcodeDetectionInfo(
+                    value = detection.value,
+                    format = detection.format
+                )
+                _lastDetection.value = info
+                _captureState.value = CaptureState.Captured(
+                    msg = "Review imported image",
+                    detection = info,
+                    imageBytes = bytes
+                )
+            } catch (error: Exception) {
+                _captureState.value = CaptureState.Error("Failed to analyze photo: ${error.message}")
+            }
+        }
     }
 
     fun retakeCapture() {
@@ -251,4 +312,10 @@ data class BarcodeDetectionInfo(
 data class SkuDatabaseInfo(
     val totalCount: Int,
     val uniqueCount: Int
+)
+
+data class SkuCapturePreview(
+    val id: Long,
+    val barcode: String,
+    val imagePath: String?
 )
