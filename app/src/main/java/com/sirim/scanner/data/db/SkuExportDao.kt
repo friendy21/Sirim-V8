@@ -17,4 +17,7 @@ interface SkuExportDao {
 
     @Delete
     suspend fun delete(record: SkuExportRecord)
+
+    @Query("SELECT * FROM sku_exports WHERE barcode = :barcode LIMIT 1")
+    suspend fun findByBarcode(barcode: String): SkuExportRecord?
 }

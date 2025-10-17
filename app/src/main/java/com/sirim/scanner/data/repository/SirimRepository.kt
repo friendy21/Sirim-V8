@@ -38,6 +38,8 @@ interface SirimRepository {
     suspend fun findByQrPayload(qrPayload: String): QrRecord?
     suspend fun findByBarcode(barcode: String): SkuRecord?
 
+    suspend fun getSkuExportByBarcode(barcode: String): SkuExportRecord?
+
     suspend fun persistImage(bytes: ByteArray, extension: String = "jpg"): String
 
     suspend fun recordSkuExport(record: SkuExportRecord): Long

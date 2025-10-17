@@ -21,276 +21,152 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook
 
 class ExportManager(private val context: Context) {
 
-    fun exportSkuToExcel(skuRecords: List<SkuRecord>, ocrRecords: List<QrRecord>): Uri {
-        val file = createSkuExportFile()
+    fun exportSkuToExcel(sku: SkuRecord, ocrRecords: List<QrRecord>): SkuExportResult {
+        val file = createSkuExportFile(sku.barcode)
+        val formHeaders = listOf(
+            "Barcode",
+            "Brand/Trademark",
+            "Model",
+            "Type",
+            "Rating",
+            "Batch",
+            "Created"
+        )
+        val sirimHeaders = listOf(
+            "Number",
+            "Captured Text",
+            "Label",
+            "Field Source",
+            "Field Note",
+            "Captured",
+            "Duplication"
+        )
+
         XSSFWorkbook().use { workbook ->
-            val sessionSheet = workbook.createSheet("SKU Sessions")
+            val sheet = workbook.createSheet("SKU ${sku.barcode}")
             val columnWidths = intArrayOf(12, 36, 26, 22, 18, 18, 22)
             columnWidths.forEachIndexed { index, width ->
-                sessionSheet.setColumnWidth(index, width * 256)
+                sheet.setColumnWidth(index, width * 256)
             }
 
             val formHeaderStyle = workbook.createFormHeaderStyle()
             val formValueStyle = workbook.createFormValueStyle()
             val tableHeaderStyle = workbook.createTableHeaderStyle()
             val tableBodyStyle = workbook.createTableBodyStyle()
-            val emptyStateStyle = workbook.createEmptyStateStyle()
-
-            val grouping = groupSessionsBySku(skuRecords, ocrRecords)
-            val formHeaders = listOf(
-                "Barcode",
-                "Brand/Trademark",
-                "Model",
-                "Type",
-                "Rating",
-                "Batch",
-                "Created"
-            )
-            val sirimHeaders = listOf(
-                "Number",
-                "Captured Text",
-                "Label",
-                "Field Source",
-                "Field Note",
-                "Captured",
-                "Duplication"
-            )
 
             var rowIndex = 0
 
-            if (grouping.sessions.isEmpty()) {
-                val emptyRow = sessionSheet.createRow(rowIndex++)
-                emptyRow.createCell(0).apply {
-                    setCellValue("No SKU sessions available")
-                    cellStyle = emptyStateStyle as XSSFCellStyle
-                }
-                if (ocrRecords.isNotEmpty()) {
-                    val detailRow = sessionSheet.createRow(rowIndex++)
-                    detailRow.createCell(0).apply {
-                        setCellValue("SIRIM scans saved: ${ocrRecords.size}")
-                        cellStyle = emptyStateStyle as XSSFCellStyle
-                    }
-                }
-            } else {
-                grouping.sessions.forEachIndexed { index, (sku, sirimRecords) ->
-                    if (index > 0) {
-                        sessionSheet.createRow(rowIndex++)
-                    }
-
-                    val formHeaderRow = sessionSheet.createRow(rowIndex++)
-                    formHeaders.forEachIndexed { columnIndex, title ->
-                        formHeaderRow.createCell(columnIndex).apply {
-                            setCellValue(title)
-                            cellStyle = formHeaderStyle as XSSFCellStyle
-                        }
-                    }
-
-                    val formValueRow = sessionSheet.createRow(rowIndex++)
-                    listOf(
-                        sku.barcode,
-                        sku.brandTrademark.orEmpty(),
-                        sku.model.orEmpty(),
-                        sku.type.orEmpty(),
-                        sku.rating.orEmpty(),
-                        sku.batchNo.orEmpty(),
-                        sku.createdAt.toReadableDate()
-                    ).forEachIndexed { columnIndex, value ->
-                        formValueRow.createCell(columnIndex).apply {
-                            setCellValue(value)
-                            cellStyle = formValueStyle as XSSFCellStyle
-                        }
-                    }
-
-                    sessionSheet.createRow(rowIndex++)
-
-                    val sirimHeaderRow = sessionSheet.createRow(rowIndex++)
-                    sirimHeaders.forEachIndexed { columnIndex, title ->
-                        sirimHeaderRow.createCell(columnIndex).apply {
-                            setCellValue(title)
-                            cellStyle = tableHeaderStyle as XSSFCellStyle
-                        }
-                    }
-
-                    if (sirimRecords.isEmpty()) {
-                        val noRecordsRow = sessionSheet.createRow(rowIndex++)
-                        noRecordsRow.createCell(0).apply {
-                            setCellValue("No SIRIM scans captured for this SKU")
-                            cellStyle = emptyStateStyle as XSSFCellStyle
-                        }
-                    } else {
-                        sirimRecords.forEachIndexed { recordIndex, record ->
-                            val row = sessionSheet.createRow(rowIndex++)
-                            row.createCell(0).apply {
-                                setCellValue((recordIndex + 1).toDouble())
-                                // Cast the style to XSSFCellStyle
-                                cellStyle = tableBodyStyle as XSSFCellStyle
-                            }
-                            row.createCell(1).apply {
-                                setCellValue(record.payload)
-                                // Cast the style to XSSFCellStyle
-                                cellStyle = tableBodyStyle as XSSFCellStyle
-                            }
-                            row.createCell(2).apply {
-                                setCellValue(record.label.orEmpty())
-                                // Cast the style to XSSFCellStyle
-                                cellStyle = tableBodyStyle as XSSFCellStyle
-                            }
-                            row.createCell(3).apply {
-                                setCellValue(record.fieldSource.orEmpty())
-                                // Cast the style to XSSFCellStyle
-                                cellStyle = tableBodyStyle as XSSFCellStyle
-                            }
-                            row.createCell(4).apply {
-                                setCellValue(record.fieldNote.orEmpty())
-                                // Cast the style to XSSFCellStyle
-                                cellStyle = tableBodyStyle as XSSFCellStyle
-                            }
-                            row.createCell(5).apply {
-                                setCellValue(record.capturedAt.toReadableDate())
-                                // Cast the style to XSSFCellStyle
-                                cellStyle = tableBodyStyle as XSSFCellStyle
-                            }
-                            row.createCell(6).apply {
-                                setCellValue("None")
-                                // Cast the style to XSSFCellStyle
-                                cellStyle = tableBodyStyle as XSSFCellStyle
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (grouping.unassigned.isNotEmpty()) {
-                sessionSheet.createRow(rowIndex++)
-                sessionSheet.createRow(rowIndex++)
-
-                val titleRow = sessionSheet.createRow(rowIndex++)
-                titleRow.createCell(0).apply {
-                    setCellValue("Unassigned SIRIM scans (no preceding SKU)")
+            val formHeaderRow = sheet.createRow(rowIndex++)
+            formHeaders.forEachIndexed { columnIndex, title ->
+                formHeaderRow.createCell(columnIndex).apply {
+                    setCellValue(title)
                     cellStyle = formHeaderStyle as XSSFCellStyle
                 }
+            }
 
-                val headerRow = sessionSheet.createRow(rowIndex++)
-                sirimHeaders.forEachIndexed { columnIndex, title ->
-                    headerRow.createCell(columnIndex).apply {
-                        setCellValue(title)
-                        cellStyle = tableHeaderStyle as XSSFCellStyle
-                    }
-                }
+            val formValues = listOf(
+                sku.barcode,
+                sku.brandTrademark.orEmpty(),
+                sku.model.orEmpty(),
+                sku.type.orEmpty(),
+                sku.rating.orEmpty(),
+                sku.batchNo.orEmpty(),
+                sku.createdAt.toReadableDate()
+            )
 
-                grouping.unassigned.forEachIndexed { recordIndex, record ->
-                    val row = sessionSheet.createRow(rowIndex++)
-                    row.createCell(0).apply {
-                        setCellValue((recordIndex + 1).toDouble())
-                        cellStyle = tableBodyStyle as XSSFCellStyle
-                    }
-                    row.createCell(1).apply {
-                        setCellValue(record.payload)
-                        cellStyle = tableBodyStyle as XSSFCellStyle
-                    }
-                    row.createCell(2).apply {
-                        setCellValue(record.label.orEmpty())
-                        // Cast the style to XSSFCellStyle
-                        cellStyle = tableBodyStyle as XSSFCellStyle
-                    }
-                    row.createCell(3).apply {
-                        setCellValue(record.fieldSource.orEmpty())
-                        // Cast the style to XSSFCellStyle
-                        cellStyle = tableBodyStyle as XSSFCellStyle
-                    }
-                    row.createCell(4).apply {
-                        setCellValue(record.fieldNote.orEmpty())
-                        // Cast the style to XSSFCellStyle
-                        cellStyle = tableBodyStyle as XSSFCellStyle
-                    }
-                    row.createCell(5).apply {
-                        setCellValue(record.capturedAt.toReadableDate())
-                        // Cast the style to XSSFCellStyle
-                        cellStyle = tableBodyStyle as XSSFCellStyle
-                    }
-                    row.createCell(6).apply {
-                        setCellValue("None")
-                        // Cast the style to XSSFCellStyle
-                        cellStyle = tableBodyStyle as XSSFCellStyle
-                    }
+            val formValueRow = sheet.createRow(rowIndex++)
+            formValues.forEachIndexed { columnIndex, value ->
+                formValueRow.createCell(columnIndex).apply {
+                    setCellValue(value)
+                    cellStyle = formValueStyle as XSSFCellStyle
                 }
             }
 
-            FileOutputStream(file).use { output ->
+            rowIndex++ // spacer row
+
+            val sirimHeaderRow = sheet.createRow(rowIndex++)
+            sirimHeaders.forEachIndexed { columnIndex, title ->
+                sirimHeaderRow.createCell(columnIndex).apply {
+                    setCellValue(title)
+                    cellStyle = tableHeaderStyle as XSSFCellStyle
+                }
+            }
+
+            ocrRecords.forEachIndexed { recordIndex, record ->
+                val row = sheet.createRow(rowIndex++)
+                row.createCell(0).apply {
+                    setCellValue((recordIndex + 1).toDouble())
+                    cellStyle = tableBodyStyle as XSSFCellStyle
+                }
+                row.createCell(1).apply {
+                    setCellValue(record.payload)
+                    cellStyle = tableBodyStyle as XSSFCellStyle
+                }
+                row.createCell(2).apply {
+                    setCellValue(record.label.orEmpty())
+                    cellStyle = tableBodyStyle as XSSFCellStyle
+                }
+                row.createCell(3).apply {
+                    setCellValue(record.fieldSource.orEmpty())
+                    cellStyle = tableBodyStyle as XSSFCellStyle
+                }
+                row.createCell(4).apply {
+                    setCellValue(record.fieldNote.orEmpty())
+                    cellStyle = tableBodyStyle as XSSFCellStyle
+                }
+                row.createCell(5).apply {
+                    setCellValue(record.capturedAt.toReadableDate())
+                    cellStyle = tableBodyStyle as XSSFCellStyle
+                }
+                row.createCell(6).apply {
+                    setCellValue("None")
+                    cellStyle = tableBodyStyle as XSSFCellStyle
+                }
+            }
+
+            FileOutputStream(file, false).use { output ->
                 workbook.write(output)
             }
         }
-        return FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
-    }
 
-    private fun groupSessionsBySku(
-        skuRecords: List<SkuRecord>,
-        ocrRecords: List<QrRecord>
-    ): SessionGrouping {
-        if (skuRecords.isEmpty()) {
-            return SessionGrouping(emptyList(), ocrRecords.sortedBy { it.capturedAt })
-        }
-
-        val sortedSku = skuRecords.sortedBy { it.createdAt }
-        val sortedOcr = ocrRecords.sortedBy { it.capturedAt }
-
-        val sessions = mutableListOf<Pair<SkuRecord, List<QrRecord>>>()
-        val unassigned = mutableListOf<QrRecord>()
-
-        var ocrIndex = 0
-
-        val firstSkuCreatedAt = sortedSku.first().createdAt
-        while (ocrIndex < sortedOcr.size && sortedOcr[ocrIndex].capturedAt < firstSkuCreatedAt) {
-            unassigned += sortedOcr[ocrIndex]
-            ocrIndex++
-        }
-
-        sortedSku.forEachIndexed { index, sku ->
-            val nextCreatedAt = sortedSku.getOrNull(index + 1)?.createdAt
-            val bucket = mutableListOf<QrRecord>()
-
-            while (ocrIndex < sortedOcr.size) {
-                val record = sortedOcr[ocrIndex]
-                if (record.capturedAt < sku.createdAt) {
-                    unassigned += record
-                    ocrIndex++
-                    continue
-                }
-
-                val withinCurrentSession = nextCreatedAt?.let { record.capturedAt < it } ?: true
-                if (!withinCurrentSession) {
-                    break
-                }
-
-                bucket += record
-                ocrIndex++
-            }
-
-            sessions += sku to bucket
-        }
-
-        while (ocrIndex < sortedOcr.size) {
-            unassigned += sortedOcr[ocrIndex]
-            ocrIndex++
-        }
-
-        return SessionGrouping(
-            sessions = sessions.sortedByDescending { it.first.createdAt },
-            unassigned = unassigned
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+        return SkuExportResult(
+            uri = uri,
+            file = file,
+            fieldCount = formHeaders.size,
+            ocrCount = ocrRecords.size
         )
     }
 
-    private fun createSkuExportFile(): File {
+    private fun createSkuExportFile(barcode: String): File {
         val directory = getSkuExportDirectory()
         if (!directory.exists()) {
             directory.mkdirs()
         }
-        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val fileName = "sku_export_$timestamp.xlsx"
+        val sanitizedBarcode = sanitizeBarcode(barcode)
+        val fileName = "sku_${sanitizedBarcode}.xlsx"
         return File(directory, fileName)
     }
 
     private fun getSkuExportDirectory(): File = File(context.getExternalFilesDir(null), "exports/sku")
+
+    private fun sanitizeBarcode(raw: String): String {
+        val normalized = raw.lowercase(Locale.US).trim()
+        val cleaned = buildString {
+            normalized.forEach { char ->
+                when {
+                    char.isLetterOrDigit() -> append(char)
+                    char == '-' || char == '_' -> append(char)
+                    else -> append('_')
+                }
+            }
+        }.trim('_')
+        return if (cleaned.isEmpty()) {
+            "unknown"
+        } else {
+            cleaned
+        }
+    }
 
     private fun Long.toReadableDate(): String {
         val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
@@ -348,7 +224,9 @@ class ExportManager(private val context: Context) {
     }
 }
 
-private data class SessionGrouping(
-    val sessions: List<Pair<SkuRecord, List<QrRecord>>>,
-    val unassigned: List<QrRecord>
+data class SkuExportResult(
+    val uri: Uri,
+    val file: File,
+    val fieldCount: Int,
+    val ocrCount: Int
 )

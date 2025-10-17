@@ -15,5 +15,11 @@ data class SkuExportRecord(
     @ColumnInfo(name = "record_count")
     val recordCount: Int,
     @ColumnInfo(name = "updated_at")
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "barcode")
+    val barcode: String? = null,
+    @ColumnInfo(name = "field_count")
+    val fieldCount: Int = 0,
+    @ColumnInfo(name = "ocr_count")
+    val ocrCount: Int = 0
 )
