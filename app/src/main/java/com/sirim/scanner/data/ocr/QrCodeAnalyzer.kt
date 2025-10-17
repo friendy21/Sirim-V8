@@ -1,5 +1,6 @@
 package com.sirim.scanner.data.ocr
 
+import android.graphics.Bitmap
 import android.graphics.Rect
 import androidx.camera.core.ImageProxy
 import com.google.mlkit.vision.common.InputImage
@@ -11,16 +12,20 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlinx.coroutines.tasks.await
 
-class QrCodeAnalyzer {
+import com.sirim.scanner.data.preferences.PreferencesManager
+
+class QrCodeAnalyzer(
+    initialReferenceKeywords: List<String> = PreferencesManager.DEFAULT_REFERENCE_MARKERS
+) {
     private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-    private val serialPattern = Regex("^[A-Z0-9]{6,}$")
-    private val referenceKeywords = listOf("SIRIM", "SIRIM QAS", "CERTIFIED")
+    private val serialPattern = Regex("^T[A-Z]{2}\\d{7}$")
+    @Volatile
+    private var referenceKeywords: List<String> = normalizeKeywords(initialReferenceKeywords)
 
     suspend fun analyze(imageProxy: ImageProxy): QrDetection? {
         val mediaImage = imageProxy.image ?: return null
         val inputImage = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-        val result = runCatching { textRecognizer.process(inputImage).await() }.getOrNull()
-            ?: return null
+        val result = recognizeText(inputImage) ?: return null
 
         val detection = selectPayload(result)
         val payload = detection?.first?.takeIf { it.isNotBlank() }
@@ -37,10 +42,43 @@ class QrCodeAnalyzer {
         }
     }
 
+    suspend fun analyze(bitmap: Bitmap): QrDetection? {
+        val inputImage = InputImage.fromBitmap(bitmap, 0)
+        val result = recognizeText(inputImage) ?: return null
+
+        val detection = selectPayload(result)
+        val payload = detection?.first?.takeIf { it.isNotBlank() }
+        return payload?.let { text ->
+            val boundingBox = detection.second
+            val normalized = boundingBox?.let { box ->
+                createNormalizedBoundingBox(box, bitmap.width, bitmap.height)
+            }
+            QrDetection(
+                payload = text,
+                boundingBox = boundingBox,
+                normalizedBoundingBox = normalized
+            )
+        }
+    }
+
+    private suspend fun recognizeText(inputImage: InputImage): Text? {
+        return runCatching { textRecognizer.process(inputImage).await() }.getOrNull()
+    }
+
+    private fun currentReferenceKeywords(): List<String> {
+        val keywords = referenceKeywords
+        return if (keywords.isNotEmpty()) keywords else PreferencesManager.DEFAULT_REFERENCE_MARKERS
+    }
+
+    fun updateReferenceKeywords(keywords: List<String>) {
+        referenceKeywords = normalizeKeywords(keywords)
+    }
+
     private fun selectPayload(result: Text): Pair<String, Rect?>? {
         val blocks = result.textBlocks
         if (blocks.isEmpty()) {
             val fallback = result.text.trim().ifEmpty { null }
+            val referenceKeywords = currentReferenceKeywords()
             val hasReferenceMarkers = fallback?.hasReferenceMarkers(referenceKeywords) == true
             return if (hasReferenceMarkers) {
                 fallback?.normalizeSerial()
@@ -51,6 +89,7 @@ class QrCodeAnalyzer {
             }
         }
 
+        val referenceKeywords = currentReferenceKeywords()
         val blockCandidates = blocks.mapNotNull { block ->
             val boundingBox = block.boundingBox ?: return@mapNotNull null
             val blockText = block.text.normalizeForComparison()
@@ -103,6 +142,15 @@ class QrCodeAnalyzer {
     }
 }
 
+private fun normalizeKeywords(keywords: List<String>): List<String> {
+    return keywords
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .distinctBy { it.uppercase(Locale.ROOT) }
+        .map { it.uppercase(Locale.ROOT) }
+}
+
+
 private data class LineCandidate(
     val normalized: String,
     val boundingBox: Rect,
@@ -146,6 +194,25 @@ private fun createNormalizedBoundingBox(
     }
     val safeWidth = max(width, 1f)
     val safeHeight = max(height, 1f)
+    val left = (rect.left / safeWidth).coerceIn(0f, 1f)
+    val top = (rect.top / safeHeight).coerceIn(0f, 1f)
+    val right = (rect.right / safeWidth).coerceIn(0f, 1f)
+    val bottom = (rect.bottom / safeHeight).coerceIn(0f, 1f)
+    return NormalizedBoundingBox(
+        left = min(left, right),
+        top = min(top, bottom),
+        right = max(left, right),
+        bottom = max(top, bottom)
+    )
+}
+
+private fun createNormalizedBoundingBox(
+    rect: Rect,
+    width: Int,
+    height: Int
+): NormalizedBoundingBox {
+    val safeWidth = max(width.toFloat(), 1f)
+    val safeHeight = max(height.toFloat(), 1f)
     val left = (rect.left / safeWidth).coerceIn(0f, 1f)
     val top = (rect.top / safeHeight).coerceIn(0f, 1f)
     val right = (rect.right / safeWidth).coerceIn(0f, 1f)

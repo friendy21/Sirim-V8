@@ -33,6 +33,18 @@ class PreferencesViewModel private constructor(
         }
     }
 
+    fun setReferenceMarkers(markers: List<String>) {
+        viewModelScope.launch {
+            manager.setReferenceMarkers(markers)
+        }
+    }
+
+    fun resetReferenceMarkers() {
+        viewModelScope.launch {
+            manager.clearReferenceMarkers()
+        }
+    }
+
     fun authenticate(username: String, password: String) {
         if (username.isBlank() || password.isBlank()) {
             _authError.value = "Username and password are required"

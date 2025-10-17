@@ -111,6 +111,9 @@ private fun NavGraph(container: AppContainer, navController: NavHostController) 
             preferencesViewModel.checkSessionExpiry()
         }
     }
+    LaunchedEffect(preferences.referenceMarkers) {
+        container.qrAnalyzer.updateReferenceKeywords(preferences.referenceMarkers)
+    }
     NavHost(navController = navController, startDestination = Destinations.StartupResolver.route) {
         composable(Destinations.StartupResolver.route) {
             LaunchedEffect(preferences.startupPage) {
@@ -212,7 +215,9 @@ private fun NavGraph(container: AppContainer, navController: NavHostController) 
                 onLogout = preferencesViewModel::logout,
                 onDismissAuthError = preferencesViewModel::clearAuthError,
                 onBack = { navController.popBackStack() },
-                onOpenFeedback = { navController.navigate(Destinations.Feedback.route) }
+                onOpenFeedback = { navController.navigate(Destinations.Feedback.route) },
+                onReferenceMarkersSave = preferencesViewModel::setReferenceMarkers,
+                onReferenceMarkersReset = preferencesViewModel::resetReferenceMarkers
             )
         }
         composable(Destinations.Feedback.route) {
