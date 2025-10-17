@@ -7,7 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [QrRecord::class, SkuRecord::class, SkuExportRecord::class],
-    version = 12,
+    version = 13,
     exportSchema = true
 )
 abstract class SirimDatabase : RoomDatabase() {
@@ -138,6 +138,12 @@ abstract class SirimDatabase : RoomDatabase() {
                 database.execSQL("ALTER TABLE sku_exports ADD COLUMN barcode TEXT")
                 database.execSQL("ALTER TABLE sku_exports ADD COLUMN field_count INTEGER NOT NULL DEFAULT 0")
                 database.execSQL("ALTER TABLE sku_exports ADD COLUMN ocr_count INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_12_13: Migration = object : Migration(12, 13) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE sku_exports ADD COLUMN thumbnail_path TEXT")
             }
         }
     }
