@@ -239,25 +239,6 @@ private fun createNormalizedBoundingBox(
     )
 }
 
-private fun createNormalizedBoundingBox(
-    rect: Rect,
-    width: Int,
-    height: Int
-): NormalizedBoundingBox {
-    val safeWidth = max(width.toFloat(), 1f)
-    val safeHeight = max(height.toFloat(), 1f)
-    val left = (rect.left / safeWidth).coerceIn(0f, 1f)
-    val top = (rect.top / safeHeight).coerceIn(0f, 1f)
-    val right = (rect.right / safeWidth).coerceIn(0f, 1f)
-    val bottom = (rect.bottom / safeHeight).coerceIn(0f, 1f)
-    return NormalizedBoundingBox(
-        left = min(left, right),
-        top = min(top, bottom),
-        right = max(left, right),
-        bottom = max(top, bottom)
-    )
-}
-
 private fun String.normalizeSerial(): String {
     return trim()
         .replace(" ", "")

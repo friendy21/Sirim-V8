@@ -6,8 +6,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.sirim.scanner.data.db.QrRecord
+import com.sirim.scanner.data.export.ExportManager
+import com.sirim.scanner.data.export.refreshActiveSkuExport
 import com.sirim.scanner.data.ocr.QrCodeAnalyzer
 import com.sirim.scanner.data.ocr.QrDetection
+import com.sirim.scanner.data.preferences.SkuSessionTracker
 import com.sirim.scanner.data.repository.SirimRepository
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
@@ -22,7 +25,9 @@ import kotlinx.coroutines.withContext
 
 class QrScannerViewModel private constructor(
     private val repository: SirimRepository,
-    private val analyzer: QrCodeAnalyzer
+    private val analyzer: QrCodeAnalyzer,
+    private val exportManager: ExportManager,
+    private val sessionTracker: SkuSessionTracker
 ) : ViewModel() {
 
     private val processing = AtomicBoolean(false)
@@ -163,6 +168,15 @@ class QrScannerViewModel private constructor(
             _captureState.value = QrCaptureState.Saved("Text saved")
             _status.tryEmit("OCR record saved")
             withContext(Dispatchers.Main) { onSaved(id) }
+            refreshActiveSkuExportAsync()
+        }
+    }
+
+    private fun refreshActiveSkuExportAsync() {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                refreshActiveSkuExport(sessionTracker, repository, exportManager)
+            }
         }
     }
 
@@ -176,13 +190,15 @@ class QrScannerViewModel private constructor(
     companion object {
         fun Factory(
             repository: SirimRepository,
-            analyzer: QrCodeAnalyzer
+            analyzer: QrCodeAnalyzer,
+            exportManager: ExportManager,
+            sessionTracker: SkuSessionTracker
         ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
                     require(modelClass.isAssignableFrom(QrScannerViewModel::class.java))
-                    return QrScannerViewModel(repository, analyzer) as T
+                    return QrScannerViewModel(repository, analyzer, exportManager, sessionTracker) as T
                 }
             }
         }
