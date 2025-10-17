@@ -1,8 +1,13 @@
 package com.sirim.scanner.ui.screens.qrcode
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.ImageDecoder
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.Camera
@@ -41,6 +46,7 @@ import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Brightness6
 import androidx.compose.material.icons.rounded.FlashOff
 import androidx.compose.material.icons.rounded.FlashOn
+import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Settings
@@ -67,6 +73,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
@@ -95,15 +102,20 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sirim.scanner.R
+import com.sirim.scanner.data.export.ExportManager
 import com.sirim.scanner.data.ocr.QrCodeAnalyzer
 import com.sirim.scanner.data.ocr.QrDetection
+import com.sirim.scanner.data.preferences.SkuSessionTracker
 import com.sirim.scanner.data.repository.SirimRepository
 import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Suppress("UNUSED_PARAMETER")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -113,18 +125,26 @@ fun QrScannerScreen(
     onRecordSaved: (Long) -> Unit,
     onOpenSettings: () -> Unit,
     repository: SirimRepository,
-    analyzer: QrCodeAnalyzer
+    analyzer: QrCodeAnalyzer,
+    exportManager: ExportManager,
+    sessionTracker: SkuSessionTracker
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
     val viewModel: QrScannerViewModel = viewModel(
-        factory = QrScannerViewModel.Factory(repository, analyzer)
+        factory = QrScannerViewModel.Factory(
+            repository = repository,
+            analyzer = analyzer,
+            exportManager = exportManager,
+            sessionTracker = sessionTracker
+        )
     )
 
     val lastDetection by viewModel.lastDetection.collectAsStateWithLifecycle()
     val captureState by viewModel.captureState.collectAsStateWithLifecycle()
     val scannerState by viewModel.scannerState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
 
     var brightnessSlider by rememberSaveable { mutableFloatStateOf(0f) }
     var isBrightnessExpanded by rememberSaveable { mutableStateOf(false) }
@@ -132,6 +152,22 @@ fun QrScannerScreen(
     var camera by remember { mutableStateOf<Camera?>(null) }
     var previewController by remember { mutableStateOf<PreviewController?>(null) }
     var frozenBitmap by remember { mutableStateOf<Bitmap?>(null) }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            val bitmap = withContext(Dispatchers.IO) { loadBitmapFromUri(context, uri) }
+            if (bitmap != null) {
+                previewController?.pauseAnalysis()
+                frozenBitmap = bitmap
+                viewModel.analyzeBitmap(bitmap)
+            } else {
+                snackbarHostState.showSnackbar(context.getString(R.string.qr_image_load_error))
+            }
+        }
+    }
 
     val zoomState = camera?.cameraInfo?.zoomState?.observeAsState()
     val torchState = camera?.cameraInfo?.torchState?.observeAsState()
@@ -196,7 +232,9 @@ fun QrScannerScreen(
         when (scannerState) {
             is ScannerWorkflowState.Success -> {
                 previewController?.pauseAnalysis()
-                frozenBitmap = previewController?.captureBitmap() ?: frozenBitmap
+                if (frozenBitmap == null) {
+                    frozenBitmap = previewController?.captureBitmap() ?: frozenBitmap
+                }
             }
 
             is ScannerWorkflowState.Idle -> {
@@ -334,6 +372,9 @@ fun QrScannerScreen(
                                 camera?.cameraControl?.enableTorch(!isFlashOn)
                             }
                         },
+                        onUploadImage = {
+                            galleryLauncher.launch("image/*")
+                        },
                         onOpenSettings = onOpenSettings,
                         onRetake = {
                             previewController?.resumeAnalysis()
@@ -381,6 +422,9 @@ fun QrScannerScreen(
                             if (hasFlashUnit) {
                                 camera?.cameraControl?.enableTorch(!isFlashOn)
                             }
+                        },
+                        onUploadImage = {
+                            galleryLauncher.launch("image/*")
                         },
                         onOpenSettings = onOpenSettings,
                         onRetake = {
@@ -456,6 +500,7 @@ private fun ScannerControlPanel(
     isFlashOn: Boolean,
     flashEnabled: Boolean,
     onToggleFlash: () -> Unit,
+    onUploadImage: () -> Unit,
     onOpenSettings: () -> Unit,
     onRetake: () -> Unit,
     onSave: () -> Unit
@@ -487,6 +532,7 @@ private fun ScannerControlPanel(
             isFlashOn = isFlashOn,
             flashEnabled = flashEnabled,
             onToggleFlash = onToggleFlash,
+            onUploadImage = onUploadImage,
             onOpenSettings = onOpenSettings,
             onRetake = onRetake,
             onSave = onSave
@@ -619,6 +665,7 @@ private fun CameraActionButtons(
     isFlashOn: Boolean,
     flashEnabled: Boolean,
     onToggleFlash: () -> Unit,
+    onUploadImage: () -> Unit,
     onOpenSettings: () -> Unit,
     onRetake: () -> Unit,
     onSave: () -> Unit
@@ -651,6 +698,13 @@ private fun CameraActionButtons(
                         onClick = onToggleFlash,
                         enabled = flashEnabled,
                         isActive = isFlashOn
+                    )
+
+                    CameraIconButton(
+                        icon = Icons.Rounded.Image,
+                        contentDescription = stringResource(id = R.string.qr_controls_upload),
+                        onClick = onUploadImage,
+                        enabled = true
                     )
 
                     CameraIconButton(
@@ -834,9 +888,8 @@ private fun BrightnessControl(
                         steps = steps,
                         enabled = enabled,
                         modifier = Modifier
-                            .width(200.dp)
+                            .widthIn(min = 160.dp, max = 220.dp)
                             .height(48.dp)
-                            .graphicsLayer { rotationZ = -90f }
                     )
 
                     Text(
@@ -966,6 +1019,18 @@ private fun PermissionRationale(modifier: Modifier = Modifier) {
     Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(text = stringResource(id = R.string.qr_permission_rationale))
     }
+}
+
+private fun loadBitmapFromUri(context: Context, uri: Uri): Bitmap? {
+    return runCatching {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val source = ImageDecoder.createSource(context.contentResolver, uri)
+            ImageDecoder.decodeBitmap(source)
+        } else {
+            @Suppress("DEPRECATION")
+            MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
+        }
+    }.getOrNull()
 }
 
 @Composable

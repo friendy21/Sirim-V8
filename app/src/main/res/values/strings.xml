@@ -36,6 +36,7 @@
     <string name="qr_controls_flash">Flash</string>
     <string name="qr_controls_flash_on">Turn flash off</string>
     <string name="qr_controls_flash_off">Turn flash on</string>
+    <string name="qr_controls_upload">Upload photo</string>
     <string name="qr_controls_settings">Open settings</string>
     <string name="qr_controls_zoom_value">Zoom: %1$d%%</string>
     <string name="qr_zoom_ratio_label">Zoom ratio: %1$.1fx</string>
@@ -43,4 +44,5 @@
     <string name="qr_reference_title">SIRIM Seal Reference</string>
     <string name="qr_reference_body">Match the coloured SIRIM seal and capture the serial ID printed directly beneath the QR code.</string>
     <string name="qr_reference_content_description">Reference illustration showing the SIRIM seal and serial placement</string>
+    <string name="qr_image_load_error">Unable to load image. Try a different photo.</string>
 </resources>
