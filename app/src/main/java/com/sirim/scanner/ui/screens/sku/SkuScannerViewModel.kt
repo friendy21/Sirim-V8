@@ -76,7 +76,7 @@ class SkuScannerViewModel private constructor(
                             format = detection.format
                         )
                         if (_captureState.value !is CaptureState.Captured) {
-                            _captureState.value = CaptureState.Ready("Barcode detected - Tap capture to save")
+                            _captureState.value = CaptureState.Ready("Barcode detected - hold steady for auto capture")
                         }
                     } else {
                         if (_captureState.value !is CaptureState.Processing &&
@@ -122,7 +122,7 @@ class SkuScannerViewModel private constructor(
 
     fun retakeCapture() {
         _captureState.value = if (pendingDetection != null) {
-            CaptureState.Ready("Barcode detected - Tap capture to save")
+            CaptureState.Ready("Barcode detected - hold steady for auto capture")
         } else {
             CaptureState.Idle
         }
