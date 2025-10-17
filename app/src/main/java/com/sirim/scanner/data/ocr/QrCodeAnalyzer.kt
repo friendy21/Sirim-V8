@@ -18,7 +18,7 @@ class QrCodeAnalyzer(
     initialReferenceKeywords: List<String> = PreferencesManager.DEFAULT_REFERENCE_MARKERS
 ) {
     private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-    private val serialPattern = Regex("^[A-Z0-9]{6,}$")
+    private val serialPattern = Regex("^T[A-Z]{2}\\d{7}$")
     @Volatile
     private var referenceKeywords: List<String> = normalizeKeywords(initialReferenceKeywords)
 

@@ -879,9 +879,8 @@ private fun BrightnessControl(
                         steps = steps,
                         enabled = enabled,
                         modifier = Modifier
-                            .width(200.dp)
+                            .widthIn(min = 160.dp, max = 220.dp)
                             .height(48.dp)
-                            .graphicsLayer { rotationZ = -90f }
                     )
 
                     Text(
