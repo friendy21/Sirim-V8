@@ -26,6 +26,17 @@ class StorageHubViewModel private constructor(
         viewModelScope.launch { repository.deleteSkuExport(record) }
     }
 
+    fun updateSkuExportThumbnail(
+        record: SkuExportRecord,
+        bytes: ByteArray,
+        onError: (Throwable) -> Unit
+    ) {
+        viewModelScope.launch {
+            runCatching { repository.updateSkuExportThumbnail(record, bytes) }
+                .onFailure(onError)
+        }
+    }
+
     companion object {
         fun Factory(repository: SirimRepository): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
