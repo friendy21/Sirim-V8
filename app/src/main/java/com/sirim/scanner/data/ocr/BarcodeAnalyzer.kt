@@ -1,18 +1,19 @@
 package com.sirim.scanner.data.ocr
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.camera.core.ImageProxy
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
+import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.DecodeHintType
 import com.google.zxing.MultiFormatReader
 import com.google.zxing.NotFoundException
 import com.google.zxing.common.HybridBinarizer
-import com.google.zxing.BarcodeFormat
 import kotlinx.coroutines.tasks.await
-import android.graphics.Bitmap
 
 class BarcodeAnalyzer {
 
@@ -61,17 +62,7 @@ class BarcodeAnalyzer {
     suspend fun analyze(imageProxy: ImageProxy): BarcodeDetection? {
         val mediaImage = imageProxy.image ?: return null
         val inputImage = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-        val results = runCatching { barcodeScanner.process(inputImage).await() }.getOrNull().orEmpty()
-        val mlKitResult = results.firstOrNull { result ->
-            val payload = result.rawValue
-            payload != null && payload.isNotBlank() && result.format in supportedFormats
-        }
-        if (mlKitResult != null) {
-            return BarcodeDetection(
-                value = mlKitResult.rawValue.orEmpty(),
-                format = formatLabel(mlKitResult.format)
-            )
-        }
+        detectWithMlKit(inputImage)?.let { return it }
 
         val bitmap = imageProxy.toBitmap() ?: return null
         return try {
@@ -80,6 +71,31 @@ class BarcodeAnalyzer {
             if (!bitmap.isRecycled) {
                 bitmap.recycle()
             }
+        }
+    }
+
+    suspend fun analyze(bytes: ByteArray): BarcodeDetection? {
+        if (bytes.isEmpty()) return null
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+        return analyze(bitmap)
+    }
+
+    suspend fun analyze(bitmap: Bitmap): BarcodeDetection? {
+        detectWithMlKit(InputImage.fromBitmap(bitmap, 0))?.let { return it }
+        return decodeWithZxing(bitmap)
+    }
+
+    private suspend fun detectWithMlKit(image: InputImage): BarcodeDetection? {
+        val results = runCatching { barcodeScanner.process(image).await() }.getOrNull().orEmpty()
+        val mlKitResult = results.firstOrNull { result ->
+            val payload = result.rawValue
+            payload != null && payload.isNotBlank() && result.format in supportedFormats
+        }
+        return mlKitResult?.let { result ->
+            BarcodeDetection(
+                value = result.rawValue.orEmpty(),
+                format = formatLabel(result.format)
+            )
         }
     }
 

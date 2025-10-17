@@ -6,11 +6,13 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.Settings
 import android.util.Range
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
@@ -23,7 +25,10 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
@@ -33,6 +38,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -40,9 +46,12 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.app.ActivityCompat
@@ -102,8 +111,12 @@ fun SkuScannerScreen(
     val captureState by viewModel.captureState.collectAsState()
     val lastDetection by viewModel.lastDetection.collectAsState()
     val databaseInfo by viewModel.databaseInfo.collectAsState()
+    val recentCaptures by viewModel.recentCaptures.collectAsState()
     val captureAction = remember { mutableStateOf<(() -> Unit)?>(null) }
     var lastAutoCaptureValue by rememberSaveable { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -117,6 +130,27 @@ fun SkuScannerScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         hasCameraPermission = granted
+    }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            coroutineScope.launch {
+                val bytes = withContext(Dispatchers.IO) {
+                    runCatching {
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            input.readBytes()
+                        }
+                    }.getOrNull()
+                }
+                if (bytes != null) {
+                    viewModel.processImportedImage(bytes)
+                } else {
+                    viewModel.onCaptureError("Unable to read selected photo")
+                }
+            }
+        }
     }
 
     val shouldShowRationale = !hasCameraPermission && activity?.let {
@@ -177,83 +211,148 @@ fun SkuScannerScreen(
             )
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Status Card
+        val captureButtonLabel = when (captureState) {
+            is CaptureState.Processing -> captureState.message
+            is CaptureState.Saved -> "Saved!"
+            is CaptureState.Error -> "Try Again"
+            is CaptureState.Captured -> "Review above"
+            is CaptureState.Ready -> "Capture manually"
+            else -> "Capture Barcode"
+        }
+
+        val scannerColumn: @Composable ColumnScope.() -> Unit = {
             SkuStatusCard(state = captureState, detection = lastDetection)
 
-            // Database Info Card
             if (databaseInfo != null) {
                 DatabaseInfoCard(info = databaseInfo!!)
             }
 
-            // Camera Preview
-            if (hasCameraPermission) {
-                SkuCameraPreview(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    lifecycleOwner = lifecycleOwner,
-                    viewModel = viewModel,
-                    captureState = captureState,
-                    captureAction = captureAction
-                )
-            } else {
-                CameraPermissionCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    title = "Camera access required",
-                    description = if (shouldShowRationale) {
-                        "We need camera access to scan barcodes. Please grant the permission."
-                    } else {
-                        "Camera permission is required to scan barcodes. You can grant it to continue."
-                    },
-                    showSettingsButton = showSettingsButton,
-                    onRequestPermission = {
-                        permissionRequested = true
-                        permissionLauncher.launch(Manifest.permission.CAMERA)
-                    },
-                    onOpenSettings = { openAppSettings(context) },
-                    onCheckPermission = {
-                        hasCameraPermission = ContextCompat.checkSelfPermission(
-                            context,
-                            Manifest.permission.CAMERA
-                        ) == PackageManager.PERMISSION_GRANTED
-                    }
+            if (recentCaptures.isNotEmpty()) {
+                SkuCaptureGallery(
+                    modifier = Modifier.fillMaxWidth(),
+                    captures = recentCaptures
                 )
             }
 
-            // Capture Button
-            Button(
-                onClick = { captureAction.value?.invoke() },
-                enabled = captureState is CaptureState.Ready && captureAction.value != null,
+            Spacer(modifier = Modifier.height(4.dp))
+
+            if (!isLandscape) {
+                if (hasCameraPermission) {
+                    SkuCameraPreview(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        lifecycleOwner = lifecycleOwner,
+                        viewModel = viewModel,
+                        captureState = captureState,
+                        captureAction = captureAction
+                    )
+                } else {
+                    CameraPermissionCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        title = "Camera access required",
+                        description = if (shouldShowRationale) {
+                            "We need camera access to scan barcodes. Please grant the permission."
+                        } else {
+                            "Camera permission is required to scan barcodes. You can grant it to continue."
+                        },
+                        showSettingsButton = showSettingsButton,
+                        onRequestPermission = {
+                            permissionRequested = true
+                            permissionLauncher.launch(Manifest.permission.CAMERA)
+                        },
+                        onOpenSettings = { openAppSettings(context) },
+                        onCheckPermission = {
+                            hasCameraPermission = ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.CAMERA
+                            ) == PackageManager.PERMISSION_GRANTED
+                        }
+                    )
+                }
+            }
+
+            if (isLandscape) {
+                Spacer(modifier = Modifier.weight(1f, fill = true))
+            }
+
+            ScannerActionButtons(
+                modifier = Modifier.fillMaxWidth(),
+                captureButtonLabel = captureButtonLabel,
+                onCapture = { captureAction.value?.invoke() },
+                onUpload = {
+                    galleryLauncher.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                    )
+                },
+                captureEnabled = captureState is CaptureState.Ready && captureAction.value != null,
+                uploadEnabled = captureState !is CaptureState.Processing
+            )
+        }
+
+        if (isLandscape) {
+            Row(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
+                    .padding(padding)
+                    .fillMaxSize()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Icon(
-                    Icons.Rounded.Camera,
-                    contentDescription = null,
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    when (captureState) {
-                        is CaptureState.Processing -> "Saving..."
-                        is CaptureState.Saved -> "Saved!"
-                        is CaptureState.Error -> "Try Again"
-                        is CaptureState.Captured -> "Review above"
-                        is CaptureState.Ready -> "Capture manually"
-                        else -> "Capture Barcode"
-                    },
-                    style = MaterialTheme.typography.titleMedium
-                )
+                Column(
+                    modifier = Modifier
+                        .weight(0.9f)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    scannerColumn()
+                }
+                if (hasCameraPermission) {
+                    SkuCameraPreview(
+                        modifier = Modifier
+                            .weight(1.1f)
+                            .fillMaxHeight(),
+                        lifecycleOwner = lifecycleOwner,
+                        viewModel = viewModel,
+                        captureState = captureState,
+                        captureAction = captureAction
+                    )
+                } else {
+                    CameraPermissionCard(
+                        modifier = Modifier
+                            .weight(1.1f)
+                            .fillMaxHeight(),
+                        title = "Camera access required",
+                        description = if (shouldShowRationale) {
+                            "We need camera access to scan barcodes. Please grant the permission."
+                        } else {
+                            "Camera permission is required to scan barcodes. You can grant it to continue."
+                        },
+                        showSettingsButton = showSettingsButton,
+                        onRequestPermission = {
+                            permissionRequested = true
+                            permissionLauncher.launch(Manifest.permission.CAMERA)
+                        },
+                        onOpenSettings = { openAppSettings(context) },
+                        onCheckPermission = {
+                            hasCameraPermission = ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.CAMERA
+                            ) == PackageManager.PERMISSION_GRANTED
+                        }
+                    )
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                scannerColumn()
             }
         }
     }
@@ -456,6 +555,186 @@ private fun DatabaseInfoCard(info: SkuDatabaseInfo) {
                         info.uniqueCount.toString(),
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScannerActionButtons(
+    modifier: Modifier = Modifier,
+    captureButtonLabel: String,
+    onCapture: () -> Unit,
+    onUpload: () -> Unit,
+    captureEnabled: Boolean,
+    uploadEnabled: Boolean
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        OutlinedButton(
+            onClick = onUpload,
+            enabled = uploadEnabled,
+            modifier = Modifier
+                .weight(1f)
+                .height(56.dp)
+        ) {
+            Icon(Icons.Rounded.PhotoLibrary, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Upload photo")
+        }
+
+        Button(
+            onClick = onCapture,
+            enabled = captureEnabled,
+            modifier = Modifier
+                .weight(1f)
+                .height(56.dp)
+        ) {
+            Icon(Icons.Rounded.Camera, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = captureButtonLabel,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun SkuCaptureGallery(
+    modifier: Modifier = Modifier,
+    captures: List<SkuCapturePreview>
+) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "Recent captures",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "Review and manage the latest barcode photos",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Surface(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = "${captures.size} photos",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+            }
+
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(captures, key = { it.id }) { capture ->
+                    SkuCaptureGalleryItem(capture)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkuCaptureGalleryItem(capture: SkuCapturePreview) {
+    val bitmap = remember(capture.imagePath) {
+        capture.imagePath?.let { path ->
+            runCatching { BitmapFactory.decodeFile(path) }.getOrNull()
+        }
+    }
+
+    Card(
+        modifier = Modifier
+            .width(160.dp)
+            .height(140.dp),
+        shape = RoundedCornerShape(18.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = "Captured SKU photo",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Image,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Preview unavailable",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                MaterialTheme.colorScheme.scrim.copy(alpha = 0.85f)
+                            )
+                        )
+                    )
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = capture.barcode,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "Record #${capture.id}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.85f)
                     )
                 }
             }
