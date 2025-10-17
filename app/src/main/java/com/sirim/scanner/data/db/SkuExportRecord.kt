@@ -21,5 +21,7 @@ data class SkuExportRecord(
     @ColumnInfo(name = "field_count")
     val fieldCount: Int = 0,
     @ColumnInfo(name = "ocr_count")
-    val ocrCount: Int = 0
+    val ocrCount: Int = 0,
+    @ColumnInfo(name = "thumbnail_path")
+    val thumbnailPath: String? = null
 )

@@ -43,4 +43,6 @@ interface SirimRepository {
     suspend fun persistImage(bytes: ByteArray, extension: String = "jpg"): String
 
     suspend fun recordSkuExport(record: SkuExportRecord): Long
+
+    suspend fun updateSkuExportThumbnail(record: SkuExportRecord, imageBytes: ByteArray)
 }
