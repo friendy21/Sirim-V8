@@ -26,6 +26,7 @@ sealed class StorageRecord {
         override val id: Long = export.id + 10_000
         override val createdAt: Long = export.updatedAt
         override val title: String = export.fileName
-        override val description: String = "${export.recordCount} SKU captures"
+        override val description: String =
+            "${export.fieldCount} form fields • ${export.ocrCount} OCR rows"
     }
 }

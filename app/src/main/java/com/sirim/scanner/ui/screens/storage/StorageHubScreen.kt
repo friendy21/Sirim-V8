@@ -156,7 +156,8 @@ fun StorageHubScreen(
                                 ),
                                 description = stringResource(
                                     id = R.string.storage_sku_export_description,
-                                    record.export.recordCount
+                                    record.export.fieldCount,
+                                    record.export.ocrCount
                                 ),
                                 updatedAt = record.createdAt,
                                 scannerLabel = R.string.storage_action_scanner,
