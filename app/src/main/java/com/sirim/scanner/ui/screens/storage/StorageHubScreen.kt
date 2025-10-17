@@ -91,7 +91,7 @@ fun StorageHubScreen(
                         context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                     }.getOrNull()
                 }
-                if (bytes.isNullOrEmpty()) {
+                if (bytes == null || bytes.isEmpty()) {
                     Toast.makeText(context, R.string.storage_thumbnail_add_error, Toast.LENGTH_LONG).show()
                 } else {
                     viewModel.updateSkuExportThumbnail(targetRecord.export, bytes) {
