@@ -24,45 +24,64 @@ class QrCodeAnalyzer(
 
     suspend fun analyze(imageProxy: ImageProxy): QrDetection? {
         val mediaImage = imageProxy.image ?: return null
-        val inputImage = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-        val result = recognizeText(inputImage) ?: return null
+        val rotation = imageProxy.imageInfo.rotationDegrees
+        val inputImage = InputImage.fromMediaImage(mediaImage, rotation)
+        detectSerial(
+            inputImage = inputImage,
+            width = imageProxy.width,
+            height = imageProxy.height,
+            rotationDegrees = rotation
+        )?.let { return it }
 
-        val detection = selectPayload(result)
-        val payload = detection?.first?.takeIf { it.isNotBlank() }
-        return payload?.let { text ->
-            val boundingBox = detection.second
-            val normalized = boundingBox?.let { box ->
-                createNormalizedBoundingBox(box, imageProxy)
-            }
-            QrDetection(
-                payload = text,
-                boundingBox = boundingBox,
-                normalizedBoundingBox = normalized
-            )
-        }
+        val bitmap = imageProxy.toBitmap() ?: return null
+        return analyzeBitmapWithRotations(bitmap)
     }
 
     suspend fun analyze(bitmap: Bitmap): QrDetection? {
-        val inputImage = InputImage.fromBitmap(bitmap, 0)
-        val result = recognizeText(inputImage) ?: return null
-
-        val detection = selectPayload(result)
-        val payload = detection?.first?.takeIf { it.isNotBlank() }
-        return payload?.let { text ->
-            val boundingBox = detection.second
-            val normalized = boundingBox?.let { box ->
-                createNormalizedBoundingBox(box, bitmap.width, bitmap.height)
-            }
-            QrDetection(
-                payload = text,
-                boundingBox = boundingBox,
-                normalizedBoundingBox = normalized
-            )
-        }
+        return analyzeBitmapWithRotations(bitmap)
     }
 
     private suspend fun recognizeText(inputImage: InputImage): Text? {
         return runCatching { textRecognizer.process(inputImage).await() }.getOrNull()
+    }
+
+    private suspend fun analyzeBitmapWithRotations(bitmap: Bitmap): QrDetection? {
+        val rotations = listOf(0, 90, 180, 270)
+        for (rotation in rotations) {
+            val inputImage = InputImage.fromBitmap(bitmap, rotation)
+            val detection = detectSerial(
+                inputImage = inputImage,
+                width = bitmap.width,
+                height = bitmap.height,
+                rotationDegrees = rotation
+            )
+            if (detection != null) {
+                return detection
+            }
+        }
+        return null
+    }
+
+    private suspend fun detectSerial(
+        inputImage: InputImage,
+        width: Int,
+        height: Int,
+        rotationDegrees: Int
+    ): QrDetection? {
+        val result = recognizeText(inputImage) ?: return null
+        val detection = selectPayload(result)
+        val payload = detection?.first?.takeIf { it.isNotBlank() }
+        return payload?.let { text ->
+            val boundingBox = detection.second
+            val normalized = boundingBox?.let { box ->
+                createNormalizedBoundingBox(box, width, height, rotationDegrees)
+            }
+            QrDetection(
+                payload = text,
+                boundingBox = boundingBox,
+                normalizedBoundingBox = normalized
+            )
+        }
     }
 
     private fun currentReferenceKeywords(): List<String> {
@@ -182,18 +201,32 @@ private fun createNormalizedBoundingBox(
     rect: Rect,
     imageProxy: ImageProxy
 ): NormalizedBoundingBox {
-    val rotation = ((imageProxy.imageInfo.rotationDegrees % 360) + 360) % 360
-    val width: Float
-    val height: Float
-    if (rotation == 90 || rotation == 270) {
-        width = imageProxy.height.toFloat()
-        height = imageProxy.width.toFloat()
+    return createNormalizedBoundingBox(
+        rect = rect,
+        width = imageProxy.width,
+        height = imageProxy.height,
+        rotationDegrees = imageProxy.imageInfo.rotationDegrees
+    )
+}
+
+private fun createNormalizedBoundingBox(
+    rect: Rect,
+    width: Int,
+    height: Int,
+    rotationDegrees: Int
+): NormalizedBoundingBox {
+    val normalizedRotation = ((rotationDegrees % 360) + 360) % 360
+    val targetWidth: Float
+    val targetHeight: Float
+    if (normalizedRotation == 90 || normalizedRotation == 270) {
+        targetWidth = height.toFloat()
+        targetHeight = width.toFloat()
     } else {
-        width = imageProxy.width.toFloat()
-        height = imageProxy.height.toFloat()
+        targetWidth = width.toFloat()
+        targetHeight = height.toFloat()
     }
-    val safeWidth = max(width, 1f)
-    val safeHeight = max(height, 1f)
+    val safeWidth = max(targetWidth, 1f)
+    val safeHeight = max(targetHeight, 1f)
     val left = (rect.left / safeWidth).coerceIn(0f, 1f)
     val top = (rect.top / safeHeight).coerceIn(0f, 1f)
     val right = (rect.right / safeWidth).coerceIn(0f, 1f)
