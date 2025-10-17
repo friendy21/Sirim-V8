@@ -4,7 +4,8 @@ data class UserPreferences(
     val startupPage: StartupPage = StartupPage.AskEveryTime,
     val isAuthenticated: Boolean = false,
     val authTimestamp: Long = 0L,
-    val authExpiryDurationMillis: Long = PreferencesManager.DEFAULT_AUTH_EXPIRY_MILLIS
+    val authExpiryDurationMillis: Long = PreferencesManager.DEFAULT_AUTH_EXPIRY_MILLIS,
+    val customReferenceMarkers: List<String> = emptyList()
 ) {
     fun isSessionValid(nowMillis: Long = System.currentTimeMillis()): Boolean {
         if (!isAuthenticated) return false
@@ -22,6 +23,15 @@ data class UserPreferences(
         val expiryAt = authTimestamp + authExpiryDurationMillis
         return (expiryAt - nowMillis).coerceAtLeast(0L)
     }
+
+    val referenceMarkers: List<String>
+        get() = if (customReferenceMarkers.isNotEmpty()) {
+            customReferenceMarkers
+        } else {
+            PreferencesManager.DEFAULT_REFERENCE_MARKERS
+        }
+
+    fun hasCustomReferenceMarkers(): Boolean = customReferenceMarkers.isNotEmpty()
 }
 
 enum class StartupPage(val storageKey: String) {

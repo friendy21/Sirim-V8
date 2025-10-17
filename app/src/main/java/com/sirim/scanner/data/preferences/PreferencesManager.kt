@@ -10,6 +10,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
+import java.util.Locale
 
 private const val DATA_STORE_NAME = "user_preferences"
 
@@ -59,6 +60,26 @@ class PreferencesManager(private val context: Context) : SkuSessionTracker {
         }
     }
 
+    suspend fun setReferenceMarkers(markers: List<String>) {
+        context.dataStore.edit { prefs ->
+            val normalized = markers
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .distinctBy { it.uppercase(Locale.ROOT) }
+            if (normalized.isEmpty()) {
+                prefs.remove(Keys.REFERENCE_MARKERS)
+            } else {
+                prefs[Keys.REFERENCE_MARKERS] = normalized.joinToString(separator = "|")
+            }
+        }
+    }
+
+    suspend fun clearReferenceMarkers() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(Keys.REFERENCE_MARKERS)
+        }
+    }
+
     override suspend fun setCurrentSku(recordId: Long?) {
         context.dataStore.edit { prefs ->
             if (recordId == null) {
@@ -80,11 +101,16 @@ class PreferencesManager(private val context: Context) : SkuSessionTracker {
         val timestamp = this[Keys.AUTH_TIMESTAMP] ?: 0L
         val expiryDuration = this[Keys.AUTH_EXPIRY_DURATION]?.takeIf { it <= 0L }
             ?: DEFAULT_AUTH_EXPIRY_MILLIS
+        val customMarkers = this[Keys.REFERENCE_MARKERS]
+            ?.split('|')
+            ?.mapNotNull { entry -> entry.trim().takeIf { it.isNotEmpty() } }
+            ?: emptyList()
         return UserPreferences(
             startupPage = startupPage,
             isAuthenticated = authenticated,
             authTimestamp = timestamp,
-            authExpiryDurationMillis = expiryDuration
+            authExpiryDurationMillis = expiryDuration,
+            customReferenceMarkers = customMarkers
         )
     }
 
@@ -94,10 +120,12 @@ class PreferencesManager(private val context: Context) : SkuSessionTracker {
         val AUTH_TIMESTAMP = longPreferencesKey("auth_timestamp")
         val AUTH_EXPIRY_DURATION = longPreferencesKey("auth_expiry_duration")
         val CURRENT_SKU_ID = longPreferencesKey("current_sku_id")
+        val REFERENCE_MARKERS = stringPreferencesKey("reference_markers")
     }
 
     companion object {
         const val DEFAULT_AUTH_EXPIRY_MILLIS: Long = 0L
+        val DEFAULT_REFERENCE_MARKERS = listOf("SIRIM", "SIRIM QAS", "CERTIFIED")
     }
 
     private fun currentSessionMarker(): Long {
