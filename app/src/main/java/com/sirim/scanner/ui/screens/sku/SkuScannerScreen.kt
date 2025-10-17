@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.Settings
+import android.util.Range
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.Camera
@@ -17,6 +18,7 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
+import androidx.camera.core.ZoomState
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
@@ -49,11 +51,10 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.Observer
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.sirim.scanner.data.ocr.BarcodeAnalyzer
 import com.sirim.scanner.data.export.ExportManager
+import com.sirim.scanner.data.ocr.BarcodeAnalyzer
 import com.sirim.scanner.data.preferences.SkuSessionTracker
 import com.sirim.scanner.data.repository.SirimRepository
-import androidx.camera.core.ZoomState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -490,7 +491,7 @@ private fun SkuCameraPreview(
             zoomSlider = state?.linearZoom ?: 0f
         }
     }
-    val brightnessRange = remember { mutableStateOf<IntRange?>(null) }
+    val brightnessRange = remember { mutableStateOf<Range<Int>?>(null) }
     var brightnessIndex by remember { mutableStateOf(0) }
     val imageCapture = remember {
         ImageCapture.Builder()
@@ -529,8 +530,8 @@ private fun SkuCameraPreview(
             brightnessRange.value = exposureState.exposureCompensationRange
             brightnessIndex = exposureState.exposureCompensationIndex
             brightnessSlider = brightnessRange.value?.let { range ->
-                val span = (range.last - range.first).takeIf { it != 0 } ?: 1
-                (brightnessIndex - range.first).toFloat() / span
+                val span = (range.upper - range.lower).takeIf { it != 0 } ?: 1
+                (brightnessIndex - range.lower).toFloat() / span
             } ?: 0.5f
             val liveData = boundCamera.cameraInfo.zoomState
             zoomStateLiveData.value = liveData
@@ -664,8 +665,11 @@ private fun SkuCameraPreview(
                 onBrightnessChange = { value ->
                     brightnessSlider = value
                     brightnessRange.value?.let { range ->
-                        val span = (range.last - range.first).takeIf { it != 0 } ?: 1
-                        val index = range.first + (span * value).roundToInt()
+                        val span = (range.upper - range.lower).takeIf { it != 0 } ?: 1
+                        val index = (range.lower + (span * value).roundToInt()).coerceIn(
+                            range.lower,
+                            range.upper
+                        )
                         brightnessIndex = index
                         camera.value?.cameraControl?.setExposureCompensationIndex(index)
                     }
@@ -754,7 +758,7 @@ private fun CameraControlPanel(
     zoomState: ZoomState?,
     zoomValue: Float,
     onZoomChange: (Float) -> Unit,
-    brightnessRange: IntRange?,
+    brightnessRange: Range<Int>?,
     brightnessValue: Float,
     brightnessIndex: Int,
     onBrightnessChange: (Float) -> Unit,
@@ -820,14 +824,14 @@ private fun CameraControlPanel(
                 ControlSliderCard(
                     icon = Icons.Rounded.LightMode,
                     title = "Brightness",
-                    subtitle = if (brightnessRange != null && brightnessRange.first != brightnessRange.last) {
+                    subtitle = if (brightnessRange != null && brightnessRange.lower != brightnessRange.upper) {
                         val percent = ((brightnessValue * 200f) - 100f).roundToInt()
                         "${percent}% • Compensation ${brightnessIndex}"
                     } else {
                         "Default"
                     },
                     value = brightnessValue,
-                    enabled = brightnessRange != null && brightnessRange.first != brightnessRange.last,
+                    enabled = brightnessRange != null && brightnessRange.lower != brightnessRange.upper,
                     onValueChange = { onBrightnessChange(it.coerceIn(0f, 1f)) }
                 )
             }
